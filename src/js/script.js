@@ -3,6 +3,8 @@
  * Xử lý các hiệu ứng UI, Scroll, Animation toàn cục
  */
 
+import './chatbot.js';
+
 document.addEventListener('DOMContentLoaded', () => {
   // === 1. Navbar Scroll Effect ===
   const navbar = document.getElementById('navbar');

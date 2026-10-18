@@ -167,7 +167,7 @@
             </label>
             <input type="file" id="avatar-input" accept="image/*" style="display: none;">
             <div class="profile-avatar-name" id="display-name">Người dùng</div>
-            <div class="profile-avatar-role" id="display-role">Học sinh</div>
+            <div class="profile-avatar-role" id="display-role">Đang tải...</div>
           </div>
 
           <div class="form-group" id="group-fullname">
@@ -210,6 +210,7 @@
               <option value="teacher">Giáo viên / Quản lý</option>
               <option value="counselor">Tham vấn viên tâm lý</option>
               <option value="parent">Phụ huynh</option>
+              <option value="admin">Admin Quản trị</option>
             </select>
           </div>
 
@@ -224,6 +225,86 @@
           </div>
         </form>
       </div>
+
+      <!-- ========== STUDENT PROFILE EDITOR (Teacher / Admin only) ========== -->
+      <div id="student-editor-section" class="animate-fade-in-up" style="display:none; animation-delay: 0.2s; max-width: 760px; margin: 0 auto var(--space-2xl);">
+        <div class="card" style="padding: var(--space-2xl);">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-xl);">
+            <div style="width: 42px; height: 42px; border-radius: var(--radius-md); background: linear-gradient(135deg,#3498db,#8e44ad); display:flex; align-items:center; justify-content:center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+              <h2 style="font-size: var(--font-size-lg); font-weight: 700; margin:0;">✏️ Chỉnh sửa hồ sơ học sinh</h2>
+              <p style="color: var(--text-muted); font-size: 13px; margin:0;">Tìm và chỉnh sửa thông tin học sinh trong hệ thống</p>
+            </div>
+          </div>
+
+          <!-- Search bar -->
+          <div style="display: flex; gap: 10px; margin-bottom: var(--space-lg);">
+            <div style="flex:1; position:relative;">
+              <svg style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="student-search-input" type="text" class="form-input" placeholder="Tìm theo tên, email, lớp..." style="padding-left: 38px;" autocomplete="off">
+            </div>
+            <button type="button" id="btn-student-search" class="btn btn-primary" style="white-space:nowrap;">🔍 Tìm kiếm</button>
+          </div>
+
+          <!-- Student list -->
+          <div id="student-list-container" style="margin-bottom: var(--space-lg);">
+            <div id="student-list-placeholder" style="text-align:center; padding: 24px 0; color: var(--text-muted); font-size: 14px;">Nhập tên hoặc email để tìm học sinh</div>
+            <div id="student-list" style="display:none; flex-direction:column; gap:8px;"></div>
+          </div>
+
+          <!-- Student edit form (hidden until a student is selected) -->
+          <div id="student-edit-panel" style="display:none; border-top: 1px solid var(--border-color); padding-top: var(--space-xl);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--space-lg);">
+              <div>
+                <div style="font-size: 13px; color: var(--text-muted); margin-bottom:2px;">Đang chỉnh sửa hồ sơ</div>
+                <div style="font-weight:700; font-size:16px;" id="edit-student-name-header">—</div>
+              </div>
+              <button type="button" id="btn-close-student-edit" class="btn btn-ghost" style="font-size:12px;">✕ Đóng</button>
+            </div>
+
+            <form id="student-edit-form">
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                <div class="form-group" id="se-group-fullname">
+                  <label class="form-label">Họ và tên <span class="required">*</span></label>
+                  <input type="text" class="form-input" id="se-fullname" required>
+                  <span class="form-error">Vui lòng nhập họ và tên</span>
+                </div>
+                <div class="form-group" id="se-group-phone">
+                  <label class="form-label">Số điện thoại</label>
+                  <input type="tel" class="form-input" id="se-phone">
+                  <span class="form-error">Số điện thoại không hợp lệ</span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Ngày sinh</label>
+                  <input type="date" class="form-input" id="se-dob">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Số CCCD</label>
+                  <input type="text" class="form-input" id="se-cccd" maxlength="12" placeholder="12 chữ số">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Trường học</label>
+                  <input type="text" class="form-input" id="se-school" placeholder="THPT Nguyễn Du...">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Lớp</label>
+                  <input type="text" class="form-input" id="se-gradeclass" placeholder="11A2...">
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="submit" class="btn btn-primary" id="btn-save-student">
+                  <span id="btn-save-student-text">💾 Lưu thay đổi</span>
+                </button>
+                <button type="button" id="btn-cancel-student-edit" class="btn btn-ghost">Hủy</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <!-- ========== END STUDENT PROFILE EDITOR ========== -->
 
       <!-- Modal: Account Settings & 2FA -->
       <div id="modal-settings" class="modal-overlay hidden">

@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentUser = null;
   let currentUserUid = null;
+  let currentUserRole = 'student'; // will be set after loading profile data
   let originalData = {};
   let pending2FAAction = null;
 
@@ -426,12 +427,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  const roleLabels = {
-    'student': 'Học sinh',
-    'teacher': 'Giáo viên / Quản lý',
-    'counselor': 'Tham vấn viên tâm lý',
-    'parent': 'Phụ huynh'
+  const roleLabelsByLang = {
+    vi: { student: 'Học sinh', teacher: 'Giáo viên / Quản lý', counselor: 'Tham vấn viên tâm lý', parent: 'Phụ huynh', admin: 'Admin Quản trị' },
+    en: { student: 'Student', teacher: 'Teacher / Manager', counselor: 'Psychological Counselor', parent: 'Parent', admin: 'System Admin' },
+    zh: { student: '学生', teacher: '教师 / 管理员', counselor: '心理咨询师', parent: '家长', admin: '系统管理员' },
+    ko: { student: '학생', teacher: '교사 / 관리자', counselor: '심리 상담사', parent: '학부모', admin: '시스템 관리자' },
+    es: { student: 'Estudiante', teacher: 'Profesor / Administrador', counselor: 'Consejero Psicológico', parent: 'Padre / Tutor', admin: 'Administrador' },
+    pt: { student: 'Estudante', teacher: 'Professor / Gestor', counselor: 'Conselheiro Psicológico', parent: 'Responsável / Pai', admin: 'Administrador' },
+    ru: { student: 'Ученик', teacher: 'Учитель / Администратор', counselor: 'Психолог-консультант', parent: 'Родитель', admin: 'Администратор' },
+    ja: { student: '生徒', teacher: '教師 / 管理者', counselor: '心理カウンセラー', parent: '保護者', admin: 'システム管理者' },
+    tl: { student: 'Estudyante', teacher: 'Guro / Tagapamahala', counselor: 'Tagapayo sa Sikolohiya', parent: 'Magulang', admin: 'Admin' }
   };
+
+  function normalizeRole(role) {
+    if (!role) return 'student';
+    const r = String(role).toLowerCase().trim();
+    if (r === 'admin' || r.includes('quản trị') || r.includes('admin')) return 'admin';
+    if (r === 'teacher' || r.includes('giáo viên') || r.includes('giao vien') || r.includes('teacher')) return 'teacher';
+    if (r === 'counselor' || r.includes('tham vấn') || r.includes('tham van') || r.includes('counselor')) return 'counselor';
+    if (r === 'parent' || r.includes('phụ huynh') || r.includes('phu huynh') || r.includes('parent')) return 'parent';
+    return 'student';
+  }
+
+  function getRoleLabel(role, lang = 'vi') {
+    const norm = normalizeRole(role);
+    const langDict = roleLabelsByLang[lang] || roleLabelsByLang.vi;
+    return langDict[norm] || roleLabelsByLang.vi[norm] || 'Học sinh';
+  }
+
+  const roleLabels = roleLabelsByLang.vi;
 
   async function loadProfileData(uid) {
     try {
@@ -439,6 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (userDoc.exists()) {
         const data = userDoc.data();
         originalData = data;
+        const userRole = normalizeRole(data.role);
         
         fullnameInput.value = data.fullName || '';
         phoneInput.value = data.phone || '';
@@ -446,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dobInput) dobInput.value = data.dob || '';
         if (schoolInput) schoolInput.value = data.school || '';
         if (gradeClassInput) gradeClassInput.value = data.gradeClass || '';
-        if (data.role) roleInput.value = data.role;
+        if (roleInput) roleInput.value = userRole;
         updateAvatarUI(data.avatar);
 
         // Language setup
@@ -463,15 +488,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const displayName = document.getElementById('display-name');
         const displayRole = document.getElementById('display-role');
         if (displayName) displayName.textContent = data.fullName || 'Người dùng';
-        if (displayRole) displayRole.textContent = roleLabels[data.role] || 'Học sinh';
+        if (displayRole) displayRole.textContent = getRoleLabel(userRole, userLang);
         if (avatarPlaceholder && data.fullName) {
           avatarPlaceholder.textContent = data.fullName.charAt(0).toUpperCase();
         }
 
         // --- ROLE ACCESS CONTROL & PROFILE LOCKING ---
         // Requirement: Role 'học sinh' has locked info after registration. Only admin or teacher can edit.
-        const isStudent = (data.role === 'student' || !data.role);
-        const isStaff = ['admin', 'teacher'].includes(data.role);
+        const isStudent = (userRole === 'student');
+        const isStaff = ['admin', 'teacher'].includes(userRole);
 
         const lockedBanner = document.getElementById('student-locked-banner');
         const staffBadge = document.getElementById('staff-edit-badge');
@@ -509,9 +534,9 @@ document.addEventListener('DOMContentLoaded', () => {
             avatarWrapper.style.cursor = 'default';
           }
         } else {
-          // Admin, Teacher, Counselor
+          // Admin, Teacher, Counselor, Parent
           if (lockedBanner) lockedBanner.style.display = 'none';
-          if (staffBadge) staffBadge.style.display = 'flex';
+          if (staffBadge) staffBadge.style.display = isStaff ? 'flex' : 'none';
 
           identityInputs.forEach(inp => {
             if (inp) {
@@ -534,6 +559,15 @@ document.addEventListener('DOMContentLoaded', () => {
           if (avatarWrapper) {
             avatarWrapper.style.cursor = 'pointer';
           }
+        }
+
+        // Save role for later use (student editor, etc.)
+        currentUserRole = userRole;
+
+        // Show or hide student editor section for teacher/admin
+        const studentEditorSection = document.getElementById('student-editor-section');
+        if (studentEditorSection) {
+          studentEditorSection.style.display = ['teacher', 'admin'].includes(userRole) ? 'block' : 'none';
         }
       }
     } catch (e) {
@@ -617,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!currentUserUid) return;
 
     // Student guard: students cannot submit profile modifications
-    if (originalData && (originalData.role === 'student' || !originalData.role)) {
+    if (originalData && (normalizeRole(originalData.role) === 'student')) {
       showToast('error', 'Thao tác bị khóa', 'Tài khoản Học sinh không được phép tự sửa đổi thông tin đã đăng ký. Vui lòng liên hệ Giáo viên hoặc Quản trị viên.');
       return;
     }
@@ -977,5 +1011,191 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error("Lỗi tải lịch sử cảm xúc:", e);
     }
   }
+
+  // ============================================================
+  // STUDENT PROFILE EDITOR (Teacher / Admin only)
+  // ============================================================
+  (function initStudentEditor() {
+    const searchInput    = document.getElementById('student-search-input');
+    const btnSearch      = document.getElementById('btn-student-search');
+    const listContainer  = document.getElementById('student-list');
+    const listPlaceholder= document.getElementById('student-list-placeholder');
+    const editPanel      = document.getElementById('student-edit-panel');
+    const editForm       = document.getElementById('student-edit-form');
+    const nameHeader     = document.getElementById('edit-student-name-header');
+    const btnClose       = document.getElementById('btn-close-student-edit');
+    const btnCancelEdit  = document.getElementById('btn-cancel-student-edit');
+
+    const seFullname   = document.getElementById('se-fullname');
+    const sePhone      = document.getElementById('se-phone');
+    const seDob        = document.getElementById('se-dob');
+    const seCccd       = document.getElementById('se-cccd');
+    const seSchool     = document.getElementById('se-school');
+    const seGradeClass = document.getElementById('se-gradeclass');
+    const btnSaveTxt   = document.getElementById('btn-save-student-text');
+
+    if (!searchInput || !btnSearch) return; // section not present
+
+    let allStudents = []; // cached list
+    let editingUid  = null;
+    let editingOriginal = {};
+
+    // Load all students from Firestore once (when teacher/admin opens the page)
+    async function loadStudents() {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        allStudents = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (normalizeRole(data.role) === 'student') {
+            allStudents.push({ uid: d.id, ...data });
+          }
+        });
+      } catch (err) {
+        console.error('Lỗi tải danh sách học sinh:', err);
+      }
+    }
+
+    function doSearch() {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        listContainer.style.display = 'none';
+        listPlaceholder.style.display = 'block';
+        listPlaceholder.textContent = 'Nhập tên hoặc email để tìm học sinh';
+        return;
+      }
+
+      const filtered = allStudents.filter(s =>
+        (s.fullName || '').toLowerCase().includes(q) ||
+        (s.email || '').toLowerCase().includes(q) ||
+        (s.gradeClass || '').toLowerCase().includes(q) ||
+        (s.school || '').toLowerCase().includes(q)
+      );
+
+      listPlaceholder.style.display = 'none';
+      listContainer.style.display = 'flex';
+      listContainer.innerHTML = '';
+
+      if (filtered.length === 0) {
+        listContainer.style.display = 'none';
+        listPlaceholder.style.display = 'block';
+        listPlaceholder.textContent = 'Không tìm thấy học sinh phù hợp.';
+        return;
+      }
+
+      filtered.slice(0, 20).forEach(s => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); background:var(--bg-glass); cursor:pointer; transition: border-color 0.2s;';
+        row.innerHTML = `
+          <div>
+            <div style="font-weight:600; font-size:14px;">${s.fullName || '(Chưa có tên)'}</div>
+            <div style="font-size:12px; color:var(--text-muted);">${s.email || ''} ${s.gradeClass ? '· Lớp ' + s.gradeClass : ''} ${s.school ? '· ' + s.school : ''}</div>
+          </div>
+          <button type="button" class="btn btn-primary" style="font-size:12px; padding:6px 14px;">Chỉnh sửa</button>
+        `;
+        row.querySelector('button').addEventListener('click', () => openEditPanel(s));
+        row.addEventListener('mouseenter', () => row.style.borderColor = 'var(--color-primary)');
+        row.addEventListener('mouseleave', () => row.style.borderColor = 'var(--border-color)');
+        listContainer.appendChild(row);
+      });
+    }
+
+    function openEditPanel(student) {
+      editingUid = student.uid;
+      editingOriginal = { ...student };
+
+      nameHeader.textContent = student.fullName || student.email || student.uid;
+      seFullname.value   = student.fullName || '';
+      sePhone.value      = student.phone || '';
+      seDob.value        = student.dob || '';
+      seCccd.value       = student.cccd || '';
+      seSchool.value     = student.school || '';
+      seGradeClass.value = student.gradeClass || '';
+
+      editPanel.style.display = 'block';
+      editPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function closeEditPanel() {
+      editPanel.style.display = 'none';
+      editingUid = null;
+      editingOriginal = {};
+      if (editForm) editForm.reset();
+    }
+
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!editingUid) return;
+
+      const newFullname = seFullname.value.trim();
+      if (!newFullname) {
+        document.getElementById('se-group-fullname').classList.add('error');
+        return;
+      }
+      document.getElementById('se-group-fullname').classList.remove('error');
+
+      if (btnSaveTxt) btnSaveTxt.textContent = 'Đang lưu...';
+      try {
+        await updateDoc(doc(db, 'users', editingUid), {
+          fullName:   newFullname,
+          phone:      sePhone.value.trim(),
+          dob:        seDob.value,
+          cccd:       seCccd.value.trim(),
+          school:     seSchool.value.trim(),
+          gradeClass: seGradeClass.value.trim(),
+          updatedAt:  serverTimestamp()
+        });
+
+        // Update cached list
+        const idx = allStudents.findIndex(s => s.uid === editingUid);
+        if (idx !== -1) {
+          allStudents[idx] = { ...allStudents[idx],
+            fullName: newFullname,
+            phone: sePhone.value.trim(),
+            dob: seDob.value,
+            cccd: seCccd.value.trim(),
+            school: seSchool.value.trim(),
+            gradeClass: seGradeClass.value.trim()
+          };
+        }
+
+        showToast('success', 'Thành công', `Đã cập nhật hồ sơ của ${newFullname}.`);
+        nameHeader.textContent = newFullname;
+        editingOriginal = { ...editingOriginal, fullName: newFullname };
+
+        // Refresh list view
+        doSearch();
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Thất bại', 'Lỗi khi lưu thông tin học sinh.');
+      } finally {
+        if (btnSaveTxt) btnSaveTxt.textContent = '💾 Lưu thay đổi';
+      }
+    });
+
+    btnSearch.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+    if (btnClose) btnClose.addEventListener('click', closeEditPanel);
+    if (btnCancelEdit) btnCancelEdit.addEventListener('click', () => {
+      // Restore original values
+      seFullname.value   = editingOriginal.fullName || '';
+      sePhone.value      = editingOriginal.phone || '';
+      seDob.value        = editingOriginal.dob || '';
+      seCccd.value       = editingOriginal.cccd || '';
+      seSchool.value     = editingOriginal.school || '';
+      seGradeClass.value = editingOriginal.gradeClass || '';
+    });
+
+    // Auto-load students when section becomes visible
+    const observer = new MutationObserver(() => {
+      const section = document.getElementById('student-editor-section');
+      if (section && section.style.display !== 'none' && allStudents.length === 0) {
+        loadStudents();
+        observer.disconnect();
+      }
+    });
+    const section = document.getElementById('student-editor-section');
+    if (section) observer.observe(section, { attributes: true, attributeFilter: ['style'] });
+  })();
 
 });
