@@ -5,7 +5,7 @@ const pagesDir = path.join(__dirname, 'pages');
 const files = ['profile.html', 'blogs.html', 'chat.html', 'report.html', 'report-sos.html', 'tests.html', 'report-detail.html', 'blog-detail.html'];
 
 const sidebarFooterRegex = /<div class="sidebar-footer"[^>]*>[\s\S]*?<\/aside>/;
-const sidebarFooterRegex2 = /<div class="sidebar-section-title">CÁ NHÂN<\/div>[\s\S]*?<\/aside>/; // Some files have this
+const sidebarFooterRegex2 = /<div class="sidebar-section-title">CÁ NHÂN<\/div>[\s\S]*?<\/aside>/;
 
 const newSidebarFooterHtml = (isActiveProfile) => `
       <div class="sidebar-section-title">CÁ NHÂN</div>
@@ -34,15 +34,15 @@ files.forEach(file => {
   const filePath = path.join(pagesDir, file);
   if (fs.existsSync(filePath)) {
     let content = fs.readFileSync(filePath, 'utf8');
-    
+
     const isProfile = file === 'profile.html';
-    
+
     if (sidebarFooterRegex2.test(content)) {
-       content = content.replace(sidebarFooterRegex2, newSidebarFooterHtml(isProfile));
+      content = content.replace(sidebarFooterRegex2, newSidebarFooterHtml(isProfile));
     } else {
-       content = content.replace(sidebarFooterRegex, newSidebarFooterHtml(isProfile));
+      content = content.replace(sidebarFooterRegex, newSidebarFooterHtml(isProfile));
     }
-    
+
     fs.writeFileSync(filePath, content);
     console.log(`Updated ${file}`);
   }

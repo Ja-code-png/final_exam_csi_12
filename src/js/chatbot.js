@@ -1,157 +1,62 @@
 /**
- * SafeBot - Trợ lý ảo An toàn Học đường (24/7 AI Assistant)
+ * SafeBot - Trợ lý ảo AI Học đường tích hợp Google Gemini AI đời mới nhất
  * Safe School Project
+ * - Giao diện thuần chữ tối giản (Text-Only), không icon emoji
+ * - Khóa API được tích hợp sẵn bảo mật trong code, không hiển thị trên giao diện
+ * - Trò chuyện AI tự nhiên, thông minh qua mô hình Gemini Flash thế hệ mới
+ * - Thống kê số liệu Dashboard thời gian thực cho Quản trị viên (Admin)
+ * - Lưu trữ và phân tách lịch sử trò chuyện theo từng tài khoản cá nhân hóa
  */
 
+import { 
+  auth, 
+  db, 
+  onAuthStateChanged, 
+  collection, 
+  getDocs, 
+  doc, 
+  getDoc,
+  query,
+  orderBy,
+  limit
+} from './firebaseConfig.js';
+
+import { GEMINI_CONFIG } from './geminiConfig.js';
+
 (() => {
-  // Tránh khởi tạo lặp lại
   if (window.SafeBotLoaded) return;
   window.SafeBotLoaded = true;
 
-  // Xác định đường dẫn tương đối phù hợp theo thư mục hiện tại
+  // Xác định đường dẫn tương đối theo thư mục
   const getBasePath = () => {
     const path = window.location.pathname.replace(/\\/g, '/');
     if (path.includes('/pages/')) {
-      return {
-        pages: '',
-        root: '../',
-        assets: '../assets/'
-      };
-    } else if (path.includes('/admin/') || path.includes('/auth/')) {
-      return {
-        pages: '../pages/',
-        root: '../',
-        assets: '../assets/'
-      };
+      return { pages: '', admin: '../admin/', auth: '../auth/', root: '../', assets: '../assets/' };
+    } else if (path.includes('/admin/')) {
+      return { pages: '../pages/', admin: '', auth: '../auth/', root: '../', assets: '../assets/' };
+    } else if (path.includes('/auth/')) {
+      return { pages: '../pages/', admin: '../admin/', auth: '', root: '../', assets: '../assets/' };
     } else {
-      return {
-        pages: 'pages/',
-        root: '',
-        assets: 'assets/'
-      };
+      return { pages: 'pages/', admin: 'admin/', auth: 'auth/', root: '', assets: 'assets/' };
     }
   };
 
   const basePath = getBasePath();
 
-  // Knowledge Base & Intents
-  const KNOWLEDGE_BASE = [
-    {
-      id: 'emergency_sos',
-      keywords: ['sos', 'khẩn cấp', 'khan cap', 'cấp cứu', 'nguy hiểm', 'bị đánh', 'bi danh', 'cứu tôi', 'cuu toi', 'đang bị đe dọa', 'dang bi de doa', 'tự tử', 'tu tu', 'nguy cấp'],
-      title: 'Hỗ trợ Khẩn cấp SOS',
-      response: `🚨 **BẠN ĐANG GẶP NGUY HIỂM? HÃY GIỮ BÌNH TĨNH VÀ HÀNH ĐỘNG NGAY:**\n\n1. **Tìm nơi an toàn:** Di chuyển ngay tới phòng giáo viên, bảo vệ hoặc nơi đông người.\n2. **Báo cáo SOS tức thì:** Nhấn nút Báo cáo khẩn cấp bên dưới (hệ thống sẽ gửi cảnh báo kèm định vị tới giáo viên/BGH).\n3. **Gọi đường dây nóng miễn phí:**\n   • **111** (Tổng đài Quốc gia Bảo vệ Trẻ em - 24/7)\n   • **113** (Cảnh sát phản ứng nhanh)`,
-      actions: [
-        { label: '🚨 Gửi báo cáo SOS khẩn cấp', url: `${basePath.pages}report-sos.html`, type: 'danger' },
-        { label: '📞 Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' }
-      ]
-    },
-    {
-      id: 'bullying_advice',
-      keywords: ['bắt nạt', 'bat nat', 'bị bắt nạt', 'bi bat nat', 'bạo lực', 'bao luc', 'đánh nhau', 'danh nhau', 'đe dọa', 'de doa', 'trấn lột', 'tran lot', 'tẩy chay', 'tay chay', 'cô lập', 'co lap'],
-      title: 'Xử lý khi bị Bắt nạt học đường',
-      response: `🛡️ **HƯỚNG DẪN AN TOÀN KHI BỊ BẮT NẠT:**\n\n• **Bạn không có lỗi:** Bắt nạt là hành vi sai trái, bạn hoàn toàn không phải chịu đựng một mình.\n• **Giữ an toàn:** Không đối đầu bạo lực, tìm cách rời khỏi tình huống nguy hiểm.\n• **Lưu giữ bằng chứng:** Chụp lại tin nhắn, ghi nhớ thời gian, địa điểm và người chứng kiến.\n• **Lên tiếng:** Hãy chia sẻ với giáo viên, phụ huynh hoặc gửi báo cáo bảo mật trên Safe School.`,
-      actions: [
-        { label: '📋 Gửi báo cáo chi tiết', url: `${basePath.pages}report.html`, type: 'primary' },
-        { label: '💬 Nói chuyện với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' }
-      ]
-    },
-    {
-      id: 'cyberbullying',
-      keywords: ['bạo lực mạng', 'bao luc mang', 'cyberbullying', 'nói xấu', 'noi xau', 'bêu riếu', 'beu rieu', 'ảnh chế', 'anh che', 'tin nhắn đe dọa', 'bóc phốt', 'boc phot', 'mạng xã hội', 'facebook', 'tiktok'],
-      title: 'Phòng chống Bạo lực trên mạng',
-      response: `🌐 **CÁCH ĐỐI PHÓ VỚI BẠO LỰC MẠNG (CYBERBULLYING):**\n\n1. **KHÔNG đáp trả:** Kẻ bắt nạt thường kích động để bạn phản ứng tiêu cực.\n2. **Chụp màn hình làm bằng chứng:** Lưu giữ tất cả tin nhắn, bình luận xúc phạm.\n3. **Chặn & Báo cáo tài khoản:** Dùng tính năng Block/Report trên MXH.\n4. **Bảo mật thông tin:** Đặt lại mật khẩu, hạn chế chia sẻ thông tin riêng tư.\n5. **Gửi báo cáo lên nhà trường** qua hệ thống Safe School để được can thiệp.`,
-      actions: [
-        { label: '📋 Báo cáo sự việc mạng', url: `${basePath.pages}report.html`, type: 'primary' },
-        { label: '📖 Đọc cẩm nang an toàn mạng', url: `${basePath.pages}blogs.html`, type: 'secondary' }
-      ]
-    },
-    {
-      id: 'mental_health',
-      keywords: ['stress', 'áp lực', 'ap luc', 'buồn', 'buon', 'khóc', 'khoc', 'trầm cảm', 'tram cam', 'lo âu', 'lo au', 'mệt mỏi', 'met moi', 'tâm lý', 'tam ly', 'bế tắc', 'be tac', 'sợ đi học', 'so di hoc'],
-      title: 'Chăm sóc Sức khỏe Tâm lý',
-      response: `🌱 **MÌNH LUÔN Ở ĐÂY LẮNG NGHE BẠN!**\n\nCảm xúc tiêu cực hay áp lực học tập là điều rất bình thường mà ai cũng có thể trải qua. Bạn đừng giữ kín một mình nhé:\n\n• Hãy thử hít thở sâu, nghe một bản nhạc nhẹ hoặc đi dạo thả lỏng.\n• Làm bài **Trắc nghiệm tâm lý DASS-21** để hiểu rõ mức độ căng thẳng hiện tại.\n• Đặt lịch trò chuyện riêng tư 1-1 với Chuyên gia tâm lý học đường hoàn toàn miễn phí.`,
-      actions: [
-        { label: '📝 Làm trắc nghiệm tâm lý DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' },
-        { label: '💬 Trò chuyện với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' }
-      ]
-    },
-    {
-      id: 'anonymous_reporting',
-      keywords: ['ẩn danh', 'an danh', 'bí mật', 'bi mat', 'giấu tên', 'giau ten', 'sợ bị trả thù', 'so bi tra thu', 'lộ danh tính', 'lo danh tinh'],
-      title: 'Báo cáo Ẩn danh An toàn',
-      response: `🔒 **BẢO MẬT & BÁO CÁO ẨN DANH TRÊN SAFE SCHOOL:**\n\n• Safe School cho phép bạn gửi báo cáo **hoàn toàn ẩn danh** mà không cần đăng nhập hoặc không hiển thị họ tên.\n• Sau khi gửi, bạn sẽ nhận được **Mã theo dõi duy nhất** để kiểm tra tiến độ giải quyết của nhà trường mà danh tính vẫn được bảo vệ 100%.\n• Dữ liệu bằng chứng (hình ảnh, video) được mã hóa bảo mật.`,
-      actions: [
-        { label: '📝 Gửi báo cáo ẩn danh ngay', url: `${basePath.pages}report.html`, type: 'primary' }
-      ]
-    },
-    {
-      id: 'hotlines',
-      keywords: ['hotline', 'số điện thoại', 'so dien thoai', 'tổng đài', 'tong dai', 'đường dây nóng', 'duong day nong', 'liên hệ', 'lien he'],
-      title: 'Danh bạ Hỗ trợ & Khẩn cấp',
-      response: `📞 **CÁC ĐƯỜNG DÂY NÓNG HỖ TRỢ MIỄN PHÍ 24/7:**\n\n• **111**: Tổng đài Quốc gia Bảo vệ Trẻ em (Tư vấn tâm lý, pháp luật, can thiệp khẩn cấp).\n• **113**: Công an phản ứng nhanh (Trường hợp đánh nhau, đe dọa vũ lực nguy cấp).\n• **115**: Cấp cứu y tế.\n• **1900 969 680**: Đường dây nóng tư vấn sức khỏe tâm thần Ngày Mai.`,
-      actions: [
-        { label: '📞 Gọi 111 (Miễn phí)', url: 'tel:111', type: 'secondary' },
-        { label: '📞 Gọi 113 (Khẩn cấp)', url: 'tel:113', type: 'danger' }
-      ]
-    },
-    {
-      id: 'about_safeschool',
-      keywords: ['safe school', 'safeschool', 'là gì', 'la gi', 'tính năng', 'tinh nang', 'chức năng', 'chuc nang', 'giới thiệu', 'gioi thieu'],
-      title: 'Giới thiệu Safe School',
-      response: `🏫 **SAFE SCHOOL - HỆ THỐNG AN TOÀN HỌC ĐƯỜNG**\n\nNền tảng công nghệ vì trường học hạnh phúc và an toàn, bao gồm các chức năng chính:\n\n1. 🚨 **Báo cáo khẩn cấp SOS:** Báo động tức thì kèm định vị.\n2. 📋 **Báo cáo bạo lực học đường:** Gửi tin phản ánh công khai hoặc ẩn danh.\n3. 💬 **Tư vấn tâm lý 1-1:** Trò chuyện trực tuyến cùng chuyên gia tâm lý.\n4. 📝 **Trắc nghiệm tâm lý:** Tự đánh giá mức độ lo âu, trầm cảm, căng thẳng.\n5. 📰 **Bài viết tuyên truyền:** Kiến thức phòng chống bạo lực và kỹ năng sống.`,
-      actions: [
-        { label: '🏠 Về trang chủ', url: `${basePath.root}index.html`, type: 'primary' },
-        { label: '📋 Gửi báo cáo', url: `${basePath.pages}report.html`, type: 'secondary' }
-      ]
-    },
-    {
-      id: 'counseling_chat',
-      keywords: ['tư vấn', 'tu van', 'tham vấn', 'tham van', 'chuyên gia', 'chuyen gia', 'thầy cô tâm lý', 'tro chuyen nguoi that', 'người thật'],
-      title: 'Phòng Tư vấn Tâm lý 1-1',
-      response: `💬 **KẾT NỐI VỚI THAM VẤN VIÊN TÂM LÝ:**\n\nBạn có thể vào phòng chat trực tuyến để trao đổi trực tiếp với các thầy cô và chuyên viên tâm lý của nhà trường. Cuộc trò chuyện được bảo mật hoàn toàn.`,
-      actions: [
-        { label: '💬 Mở Phòng Tư vấn Tâm lý', url: `${basePath.pages}chat.html`, type: 'primary' }
-      ]
-    },
-    {
-      id: 'test_mental',
-      keywords: ['test', 'bài test', 'bai test', 'trắc nghiệm', 'trac nghiem', 'dass', 'kiểm tra tâm lý', 'kiem tra tam ly', 'đánh giá'],
-      title: 'Trắc nghiệm Tâm lý DASS-21',
-      response: `📝 **BÀI ĐÁNH GIÁ SỨC KHỎE TÂM LÝ:**\n\nHệ thống Safe School cung cấp bài test chuẩn DASS-21 giúp bạn nhận biết tình trạng Căng thẳng (Stress), Lo âu (Anxiety) và Trầm cảm (Depression) chỉ trong 3 phút, có lời khuyên hữu ích ngay sau khi làm xong.`,
-      actions: [
-        { label: '📝 Bắt đầu làm bài test', url: `${basePath.pages}tests.html`, type: 'primary' }
-      ]
-    },
-    {
-      id: 'greeting',
-      keywords: ['chào', 'chao', 'xin chào', 'xin chao', 'hello', 'hi', 'bạn là ai', 'ban la ai', 'helo', 'alo', 'hey'],
-      title: 'Lời chào',
-      response: `👋 **Xin chào bạn! Mình là SafeBot — Trợ lý ảo An toàn Học đường.**\n\nMình có thể hỗ trợ bạn:\n• Hướng dẫn cách xử lý khi gặp bạo lực hoặc bắt nạt học đường\n• Gửi báo cáo SOS khẩn cấp hoặc báo cáo ẩn danh\n• Lời khuyên giải tỏa căng thẳng tâm lý & bài test DASS-21\n• Cung cấp các số điện thoại hỗ trợ khẩn cấp (111, 113)\n\nBạn có thể nhấn vào các gợi ý bên dưới hoặc gõ câu hỏi cho mình nhé!`,
-      actions: []
-    },
-    {
-      id: 'thanks',
-      keywords: ['cảm ơn', 'cam on', 'thanks', 'thank you', 'tuyệt vời', 'tuyet voi', 'tạm biệt', 'tam biet', 'bye'],
-      title: 'Cảm ơn',
-      response: `❤️ **Không có gì bạn nhé!**\n\nHãy nhớ rằng bạn luôn có sự đồng hành và bảo vệ từ nhà trường và Safe School. Bất cứ khi nào cần hỗ trợ hay tâm sự, hãy mở SafeBot nhé! Chúc bạn một ngày an lành và tự tin! ✨`,
-      actions: []
-    }
-  ];
+  // State người dùng
+  let currentUser = null;
+  let currentUserProfile = {
+    uid: null,
+    fullName: '',
+    role: 'guest',
+    gradeClass: '',
+    school: '',
+    email: '',
+    avatar: ''
+  };
 
-  // Các câu hỏi gợi ý nhanh
-  const QUICK_SUGGESTIONS = [
-    { text: '🚨 Bị bắt nạt phải làm sao?', query: 'Tôi bị bắt nạt phải làm sao?' },
-    { text: '🆘 Báo cáo khẩn cấp SOS', query: 'Báo cáo khẩn cấp SOS' },
-    { text: '🧠 Bị stress / áp lực học tập', query: 'Tôi đang bị stress và áp lực' },
-    { text: '🔒 Báo cáo ẩn danh như thế nào?', query: 'Cách gửi báo cáo ẩn danh' },
-    { text: '📞 Hotline hỗ trợ khẩn cấp', query: 'Danh sách số hotline khẩn cấp' },
-    { text: '📝 Làm bài test tâm lý', query: 'Làm bài trắc nghiệm tâm lý DASS-21' },
-    { text: '🌐 Bạo lực mạng phải làm gì?', query: 'Bị nói xấu trên mạng xã hội phải làm sao?' }
-  ];
-
-  // Helper loại bỏ dấu tiếng Việt để so khớp tự nhiên
   const removeAccents = (str) => {
+    if (!str) return '';
     return str
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -161,112 +66,384 @@
       .trim();
   };
 
-  // Phát âm thanh thông báo nhẹ nhàng qua Web Audio API (không cần tải file)
-  const playChime = () => {
+  const getUserShortName = () => {
+    if (!currentUserProfile.fullName) return '';
+    const parts = currentUserProfile.fullName.trim().split(' ');
+    return parts[parts.length - 1];
+  };
+
+  // Quản lý lịch sử chat theo tài khoản
+  const getStorageKey = () => {
+    if (currentUser && currentUser.uid) {
+      return `safebot_history_${currentUser.uid}`;
+    }
+    return 'safebot_history_guest';
+  };
+
+  const getChatHistory = () => {
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
-
-      gain.gain.setValueAtTime(0.08, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + 0.25);
+      const data = localStorage.getItem(getStorageKey());
+      return data ? JSON.parse(data) : [];
     } catch (e) {
-      // AudioContext có thể bị chặn khi chưa có user interaction
+      return [];
     }
   };
 
-  // Render HTML cho tin nhắn (hỗ trợ in đậm markdown đơn giản và xuống dòng)
+  const saveChatHistory = (history) => {
+    try {
+      const trimmed = history.slice(-60);
+      localStorage.setItem(getStorageKey(), JSON.stringify(trimmed));
+    } catch (e) {}
+  };
+
+  const appendToChatHistory = (item) => {
+    const list = getChatHistory();
+    list.push(item);
+    saveChatHistory(list);
+  };
+
+  const clearCurrentChatHistory = () => {
+    try {
+      localStorage.removeItem(getStorageKey());
+    } catch (e) {}
+  };
+
+  // ============================================================================
+  // GỌI GOOGLE GEMINI AI ĐỜI MỚI NHẤT
+  // ============================================================================
+  const callGeminiAI = async (userInput, chatHistory) => {
+    const apiKey = GEMINI_CONFIG.apiKey;
+    const { role, fullName, gradeClass, school } = currentUserProfile;
+    const displayName = fullName || 'bạn';
+    const shortName = getUserShortName();
+
+    const systemPrompt = `Bạn là SafeBot - Trợ lý trí tuệ nhân tạo AI An toàn Học đường & Tư vấn Tâm lý của hệ thống Safe School (Việt Nam).
+THÔNG TIN NGƯỜI DÙNG:
+- Họ tên: ${displayName} ${shortName ? `(gọi thân mật: ${shortName})` : ''}
+- Vai trò: ${role === 'admin' ? 'Quản trị viên' : (role === 'teacher' ? 'Giáo viên' : (role === 'counselor' ? 'Chuyên viên tâm lý' : (role === 'parent' ? 'Phụ huynh' : 'Học sinh')))}
+- Lớp: ${gradeClass || 'Chưa cập nhật'}
+- Trường: ${school || 'Chưa cập nhật'}
+
+QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
+1. KHÔNG SỬ DỤNG BẤT KỲ BIỂU TƯỢNG EMOJI HOẶC ICON NÀO trong câu trả lời. Toàn bộ câu trả lời chỉ dùng chữ cái thuần túy, dấu câu và định dạng Markdown (in đậm, gạch đầu dòng, tiêu đề).
+2. Xưng hô tự nhiên, thấu hiểu, mang tính sư phạm và ấm áp: với học sinh xưng "mình" và gọi "${shortName || displayName}"; với giáo viên xưng "SafeBot" và gọi "thầy/cô"; với phụ huynh gọi "quý phụ huynh".
+3. Khi người dùng gặp nguy hiểm, bị bắt nạt, đe dọa hoặc áp lực tâm lý:
+   - Khuyên bình tĩnh, tìm người lớn tin cậy hoặc giáo viên.
+   - Nhắc đến Tổng đài Quốc gia Bảo vệ Trẻ em: 111 (miễn phí 24/7) và Cảnh sát: 113.
+   - Hướng dẫn gửi Báo cáo SOS khẩn cấp hoặc Báo cáo ẩn danh trên Safe School.
+4. Khi hỏi về trường học, thi cử, ngành học: Cung cấp thông tin khách quan, chính xác, định hướng phát triển tích cực.
+5. Định dạng Markdown rõ ràng, chia đoạn ngắn, dùng gạch đầu dòng (-) để dễ đọc.`;
+
+    const contents = [];
+    const recent = chatHistory.slice(-8);
+    recent.forEach(msg => {
+      if (msg.sender === 'user' && msg.text) {
+        contents.push({ role: 'user', parts: [{ text: msg.text }] });
+      } else if (msg.sender === 'bot' && msg.response) {
+        contents.push({ role: 'model', parts: [{ text: msg.response }] });
+      }
+    });
+
+    contents.push({ role: 'user', parts: [{ text: userInput }] });
+
+    const modelsToTry = [GEMINI_CONFIG.primaryModel, GEMINI_CONFIG.fallbackModel, 'gemini-3.5-flash'];
+    let lastError = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const endpoint = `${GEMINI_CONFIG.baseUrl}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: contents,
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 1024
+            }
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            // Lọc sạch mọi emoji còn sót lại
+            const cleanText = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+            
+            const actions = [];
+            const cleanLower = removeAccents(userInput);
+            if (cleanLower.includes('sos') || cleanLower.includes('bat nat') || cleanLower.includes('nguy hiem')) {
+              actions.push({ label: 'Gửi báo cáo SOS khẩn cấp', url: `${basePath.pages}report-sos.html`, type: 'danger' });
+              actions.push({ label: 'Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' });
+            } else if (cleanLower.includes('stress') || cleanLower.includes('tam ly') || cleanLower.includes('tram cam')) {
+              actions.push({ label: 'Làm trắc nghiệm tâm lý DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' });
+              actions.push({ label: 'Chat với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' });
+            }
+
+            return {
+              title: 'SafeBot AI',
+              response: cleanText.trim(),
+              actions: actions
+            };
+          }
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          lastError = errData.error?.message || `HTTP ${response.status}`;
+        }
+      } catch (err) {
+        lastError = err.message;
+      }
+    }
+
+    throw new Error(lastError || 'Không thể kết nối đến máy chủ AI');
+  };
+
+  // ============================================================================
+  // THỐNG KÊ DASHBOARD CHO QUẢN TRỊ VIÊN (ADMIN)
+  // ============================================================================
+  const fetchDashboardStats = async () => {
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      let totalUsers = usersSnap.size || 0;
+      let cStudent = 0, cTeacher = 0, cCounselor = 0, cAdmin = 0;
+
+      usersSnap.forEach(d => {
+        const r = d.data().role || 'student';
+        if (r === 'student') cStudent++;
+        else if (r === 'teacher') cTeacher++;
+        else if (r === 'counselor') cCounselor++;
+        else if (r === 'admin') cAdmin++;
+      });
+
+      const reportsSnap = await getDocs(query(collection(db, 'reports'), orderBy('createdAt', 'desc'), limit(150)));
+      let totalReports = reportsSnap.size || 0;
+      let pending = 0, resolved = 0, sos = 0;
+      let physical = 0, cyber = 0, verbal = 0, mental = 0;
+
+      reportsSnap.forEach(d => {
+        const data = d.data();
+        if (data.status === 'pending') pending++;
+        if (data.status === 'resolved') resolved++;
+        if (data.isSOS) sos++;
+
+        if (data.type === 'physical') physical++;
+        else if (data.type === 'cyber') cyber++;
+        else if (data.type === 'verbal') verbal++;
+        else mental++;
+      });
+
+      const safeTotal = totalReports || 1;
+      const pPhysical = Math.round((physical / safeTotal) * 100);
+      const pCyber = Math.round((cyber / safeTotal) * 100);
+      const pVerbal = Math.round((verbal / safeTotal) * 100);
+      const pMental = Math.round((mental / safeTotal) * 100);
+
+      return {
+        success: true,
+        totalUsers, cStudent, cTeacher, cCounselor, cAdmin,
+        totalReports, pending, resolved, sos,
+        physical, cyber, verbal, mental,
+        pPhysical, pCyber, pVerbal, pMental
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Tạo lời chào cá nhân hóa thuần chữ (Text-Only)
+  const createPersonalizedGreeting = () => {
+    const { role, fullName, gradeClass, school } = currentUserProfile;
+    const shortName = getUserShortName();
+    const displayName = fullName || 'bạn';
+
+    if (role === 'admin') {
+      return {
+        title: 'Quản trị viên',
+        response: `Xin chào Quản trị viên ${displayName}.\n\nSafeBot đang hoạt động ở Chế độ Quản trị với trí tuệ nhân tạo Gemini AI:\n- Thống kê Dashboard: Số liệu người dùng, báo cáo và các vụ việc SOS theo thời gian thực\n- Quản trị thành viên: Kiểm tra số lượng học sinh, giáo viên, chuyên viên\n- Trợ lý thông minh: Giải đáp và hỗ trợ mọi nghiệp vụ học đường\n\nBạn có thể chọn câu hỏi gợi ý bên dưới hoặc nhập câu hỏi trực tiếp.`,
+        actions: [
+          { label: 'Thống kê số liệu Dashboard', query: 'Thống kê số liệu dashboard hệ thống', type: 'primary' },
+          { label: 'Thống kê Người dùng', query: 'Thống kê người dùng hệ thống', type: 'secondary' },
+          { label: 'Thống kê Báo cáo và SOS', query: 'Thống kê tình hình báo cáo và SOS', type: 'secondary' }
+        ]
+      };
+    }
+
+    if (role === 'teacher') {
+      return {
+        title: 'Giáo viên',
+        response: `Kính chào Thầy/Cô ${displayName}.\n\nSafeBot AI sẵn sàng hỗ trợ Thầy/Cô trong công tác quản lý và đồng hành cùng học sinh:\n- Hướng dẫn quy trình tiếp nhận và xử lý sự việc bạo lực học đường\n- Nhận diện các dấu hiệu căng thẳng tâm lý ở lứa tuổi học sinh\n- Tra cứu thông tin tuyển sinh và trường học toàn quốc\n\nThầy/Cô cần hỗ trợ nội dung gì hôm nay?`,
+        actions: [
+          { label: 'Quy trình xử lý bạo lực học đường', query: 'Quy trình xử lý khi học sinh bị bắt nạt', type: 'primary' },
+          { label: 'Dấu hiệu nhận biết áp lực tâm lý', query: 'Cách nhận diện học sinh bị áp lực tâm lý', type: 'secondary' },
+          { label: 'Danh bạ đường dây nóng hỗ trợ', query: 'Danh sách số hotline khẩn cấp', type: 'secondary' }
+        ]
+      };
+    }
+
+    if (role === 'student' && fullName) {
+      const classText = gradeClass ? ` - Lớp ${gradeClass}` : '';
+      const schoolText = school ? ` (${school})` : '';
+      return {
+        title: `Chào ${shortName || fullName}`,
+        response: `Xin chào bạn ${displayName}${classText}${schoolText}.\n\nMình là SafeBot - Trợ lý ảo AI An toàn Học đường. Cuộc trò chuyện này được lưu lại riêng tư cho tài khoản của bạn:\n- Hỗ trợ cách xử lý an toàn khi gặp bạo lực hoặc bị bắt nạt\n- Lắng nghe, chia sẻ và hướng dẫn bài trắc nghiệm tâm lý DASS-21\n- Tra cứu thông tin, điểm mạnh và website các trường Đại học và THPT\n- Trò chuyện và giải đáp bất kỳ câu hỏi nào bạn đang quan tâm\n\nHôm nay bạn cần hỗ trợ điều gì? Hãy nhắn cho mình nhé.`,
+        actions: [
+          { label: 'Tra cứu thông tin trường học', query: 'Tra cứu thông tin các trường học', type: 'primary' },
+          { label: 'Cần làm gì khi bị bắt nạt', query: 'Tôi bị bắt nạt phải làm sao?', type: 'danger' },
+          { label: 'Làm bài kiểm tra tâm lý DASS-21', query: 'Làm bài trắc nghiệm tâm lý DASS-21', type: 'secondary' },
+          { label: 'Báo cáo khẩn cấp SOS', url: `${basePath.pages}report-sos.html`, type: 'secondary' }
+        ]
+      };
+    }
+
+    // Khách chưa đăng nhập
+    return {
+      title: 'Chào bạn',
+      response: `Xin chào bạn. Mình là SafeBot - Trợ lý trí tuệ nhân tạo AI An toàn Học đường Safe School.\n\nBạn có thể đăng nhập tài khoản để SafeBot lưu lại lịch sử trò chuyện cá nhân hóa. Mình có thể hỗ trợ bạn:\n- Trò chuyện, tư vấn kỹ năng sống và giải tỏa áp lực học tập\n- Tra cứu thông tin các trường Đại học và THPT toàn quốc\n- Hướng dẫn bảo vệ an toàn và gửi báo cáo khi gặp bạo lực học đường\n- Thống kê Dashboard hệ thống dành cho Quản trị viên\n\nBạn hãy gửi câu hỏi để bắt đầu trò chuyện nhé.`,
+      actions: [
+        { label: 'Đăng nhập tài khoản', url: `${basePath.auth}sign-in.html`, type: 'primary' },
+        { label: 'Tra cứu thông tin trường học', query: 'Tra cứu thông tin các trường học', type: 'secondary' },
+        { label: 'Báo cáo khẩn cấp SOS', url: `${basePath.pages}report-sos.html`, type: 'danger' }
+      ]
+    };
+  };
+
+  // Gợi ý câu hỏi nhanh thuần chữ
+  const getPersonalizedSuggestions = () => {
+    const { role, gradeClass } = currentUserProfile;
+
+    if (role === 'admin') {
+      return [
+        { text: 'Thống kê Dashboard', query: 'Thống kê số liệu dashboard hệ thống', isAdmin: true },
+        { text: 'Thống kê Người dùng', query: 'Thống kê người dùng hệ thống', isAdmin: true },
+        { text: 'Thống kê Báo cáo & SOS', query: 'Thống kê tình hình báo cáo và SOS', isAdmin: true },
+        { text: 'Tra cứu trường học', query: 'Tra cứu thông tin các trường học' },
+        { text: 'ĐH Bách Khoa Hà Nội', query: 'Thông tin trường Bách Khoa Hà Nội' }
+      ];
+    }
+
+    const studentChips = [
+      { text: 'Tra cứu trường học', query: 'Tra cứu thông tin các trường học' },
+      { text: 'ĐH Bách Khoa Hà Nội', query: 'Thông tin trường Đại học Bách Khoa Hà Nội' },
+      { text: 'ĐH Kinh tế Quốc dân', query: 'Thông tin trường Đại học Kinh tế Quốc dân' },
+      { text: 'Bị bắt nạt làm sao', query: 'Tôi bị bắt nạt phải làm sao?' },
+      { text: 'Báo cáo khẩn cấp SOS', query: 'Báo cáo khẩn cấp SOS' },
+      { text: 'Giải tỏa áp lực thi cử', query: 'Tôi đang bị stress và áp lực' },
+      { text: 'Làm bài test DASS-21', query: 'Làm bài trắc nghiệm tâm lý DASS-21' },
+      { text: 'Danh bạ Hotline', query: 'Danh sách số hotline khẩn cấp' }
+    ];
+
+    if (gradeClass && gradeClass.startsWith('12')) {
+      studentChips.unshift({ text: 'Định hướng tuyển sinh khối 12', query: 'Định hướng chọn trường đại học cho học sinh lớp 12' });
+    }
+
+    return studentChips;
+  };
+
   const formatMarkdown = (text) => {
     if (!text) return '';
-    let html = text
+    return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`(.*?)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 4px; font-family: monospace;">$1</code>')
       .replace(/\n/g, '<br>');
-    return html;
   };
 
-  // Lấy thời gian hiện tại định dạng HH:mm
   const getCurrentTime = () => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   };
 
-  // Tìm kiếm câu trả lời phù hợp nhất từ knowledge base
-  const findAnswer = (userInput) => {
-    const cleanRaw = userInput.toLowerCase();
+  // ============================================================================
+  // XỬ LÝ PHẢN HỒI TIN NHẮN (AI-FIRST ARCHITECTURE)
+  // ============================================================================
+  const resolveBotAnswer = async (userInput, chatHistory) => {
     const cleanNoAccent = removeAccents(userInput);
+    const displayName = currentUserProfile.fullName || 'bạn';
 
-    let bestMatch = null;
-    let highestScore = 0;
+    // 1. Kiểm tra yêu cầu thống kê Dashboard (chỉ xử lý riêng cho Admin qua Firestore)
+    const dashboardKeywords = [
+      'thong ke', 'dashboard', 'so lieu', 'bao cao he thong', 'tong so nguoi dung',
+      'so luong nguoi dung', 'bao nhieu bao cao', 'tinh hinh bao cao', 'so ca sos',
+      'thong ke nguoi dung', 'thong ke user', 'so hoc sinh', 'so giao vien'
+    ];
 
-    for (const item of KNOWLEDGE_BASE) {
-      let score = 0;
-      for (const kw of item.keywords) {
-        const kwNoAccent = removeAccents(kw);
-        if (cleanRaw.includes(kw.toLowerCase())) {
-          score += 3;
-        } else if (cleanNoAccent.includes(kwNoAccent)) {
-          score += 2;
-        }
+    const isDashboardQuery = dashboardKeywords.some(kw => cleanNoAccent.includes(kw));
+
+    if (isDashboardQuery) {
+      if (currentUserProfile.role !== 'admin') {
+        return {
+          title: 'Truy cập giới hạn',
+          response: `Tính năng thống kê số liệu Dashboard và dữ liệu tổng quan sự vụ chỉ được cung cấp cho tài khoản Quản trị viên (Admin) để đảm bảo an toàn và bảo mật thông tin học đường.\n\n- Nếu bạn là Quản trị viên, vui lòng đăng nhập tài khoản Admin để tra cứu.\n- Nếu bạn là Học sinh, bạn có thể tra cứu thông tin trường học, gửi báo cáo bảo mật hoặc làm trắc nghiệm tâm lý.`,
+          actions: [
+            { label: 'Đăng nhập Quản trị viên', url: `${basePath.auth}sign-in.html`, type: 'primary' },
+            { label: 'Tra cứu thông tin trường học', query: 'Tra cứu thông tin các trường học', type: 'secondary' }
+          ]
+        };
       }
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatch = item;
+
+      const stats = await fetchDashboardStats();
+      if (!stats.success) {
+        return {
+          title: 'Lỗi tải dữ liệu',
+          response: `Không thể kết nối đến cơ sở dữ liệu Dashboard: ${stats.error || 'Vui lòng kiểm tra lại đường truyền mạng.'}`,
+          actions: [
+            { label: 'Thử lại', query: 'Thống kê số liệu dashboard hệ thống', type: 'primary' },
+            { label: 'Mở trang Dashboard', url: `${basePath.admin}dashboard.html`, type: 'secondary' }
+          ]
+        };
       }
+
+      const responseText = `BÁO CÁO THỐNG KÊ DASHBOARD HỆ THỐNG\nDữ liệu thời gian thực được đồng bộ từ Firestore cho Quản trị viên ${displayName}:\n\n` +
+        `Người dùng hệ thống: ${stats.totalUsers} tài khoản\n` +
+        `- Học sinh: ${stats.cStudent}\n` +
+        `- Giáo viên: ${stats.cTeacher}\n` +
+        `- Tham vấn viên: ${stats.cCounselor}\n` +
+        `- Quản trị viên: ${stats.cAdmin}\n\n` +
+        `Tình hình Báo cáo: ${stats.totalReports} vụ việc\n` +
+        `- Đang chờ xử lý: ${stats.pending} vụ\n` +
+        `- Đã giải quyết: ${stats.resolved} vụ\n` +
+        `- Cảnh báo khẩn cấp SOS: ${stats.sos} vụ\n\n` +
+        `Phân loại sự vụ bạo lực:\n` +
+        `- Bạo lực thể chất: ${stats.physical} vụ (${stats.pPhysical}%)\n` +
+        `- Bắt nạt qua mạng: ${stats.cyber} vụ (${stats.pCyber}%)\n` +
+        `- Bạo lực ngôn từ/lăng mạ: ${stats.verbal} vụ (${stats.pVerbal}%)\n` +
+        `- Áp lực tâm lý/khác: ${stats.mental} vụ (${stats.pMental}%)`;
+
+      return {
+        title: 'Thống kê Dashboard Admin',
+        response: responseText,
+        actions: [
+          { label: 'Xem chi tiết trang Dashboard', url: `${basePath.admin}dashboard.html`, type: 'primary' },
+          { label: 'Quản lý Người dùng', url: `${basePath.pages}users.html`, type: 'secondary' },
+          { label: 'Quản lý phòng Chat', url: `${basePath.pages}chat-management.html`, type: 'secondary' }
+        ]
+      };
     }
 
-    if (bestMatch && highestScore > 0) {
-      return bestMatch;
-    }
-
-    // Fallback response nếu không nhận diện được
-    return {
-      title: 'Trợ giúp',
-      response: `🤔 **SafeBot chưa hiểu rõ câu hỏi này.**\n\nBạn có thể thử đặt câu hỏi khác hoặc lựa chọn một trong các chủ đề hỗ trợ nhanh bên dưới nhé!\n\nNếu bạn cần trợ giúp trực tiếp, hãy gửi báo cáo hoặc gặp Tham vấn viên tâm lý.`,
-      actions: [
-        { label: '🚨 Gửi báo cáo khẩn cấp', url: `${basePath.pages}report-sos.html`, type: 'danger' },
-        { label: '💬 Chat với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'primary' },
-        { label: '📞 Gọi 111 (Miễn phí)', url: 'tel:111', type: 'secondary' }
-      ]
-    };
+    // 2. Chuyển toàn bộ câu hỏi trò chuyện tới Gemini AI thế hệ mới
+    return await callGeminiAI(userInput, chatHistory);
   };
 
-  // Xây dựng DOM cho Chatbot
+  // ============================================================================
+  // XÂY DỰNG GIAO DIỆN (CHỮ THUẦN TÚY, KHÔNG DÙNG ICON, KHÔNG HIỂN THỊ CỔNG API)
+  // ============================================================================
   const buildChatbotUI = () => {
-    // 1. Nút Launcher tròn
+    // 1. Launcher button: Chữ thuần túy
     const launcher = document.createElement('button');
     launcher.id = 'safebot-launcher';
     launcher.className = 'safebot-launcher';
-    launcher.setAttribute('aria-label', 'Mở trợ lý ảo SafeBot');
+    launcher.setAttribute('aria-label', 'Mở trợ lý ảo SafeBot AI');
     launcher.innerHTML = `
-      <svg class="icon-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
-        <rect x="3" y="8" width="18" height="12" rx="4"/>
-        <line x1="8" y1="13" x2="8.01" y2="13"/>
-        <line x1="16" y1="13" x2="16.01" y2="13"/>
-        <path d="M9 17h6"/>
-      </svg>
-      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"/>
-        <line x1="6" y1="6" x2="18" y2="18"/>
-      </svg>
-      <span class="safebot-badge" id="safebot-badge">1</span>
-      <span class="safebot-tooltip">Trợ lý SafeBot 24/7 💬</span>
+      <span class="launcher-text-open">Trợ lý AI</span>
+      <span class="launcher-text-close">Đóng</span>
+      <span class="safebot-badge" id="safebot-badge" style="display: none;">1</span>
     `;
 
     // 2. Cửa sổ chat
@@ -277,30 +454,21 @@
       <!-- Header -->
       <div class="safebot-header">
         <div class="safebot-header-info">
-          <div class="safebot-avatar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-            <span class="safebot-online-dot"></span>
-          </div>
+          <div class="safebot-avatar">AI</div>
           <div class="safebot-title-wrap">
-            <h4>SafeBot AI <span class="safebot-title-badge">24/7</span></h4>
-            <p>Trợ lý An toàn & Hỗ trợ Tâm lý</p>
+            <h4>
+              SafeBot AI
+              <span class="safebot-title-badge">Gemini</span>
+              <span id="safebot-admin-header-pill" class="safebot-admin-pill" style="display: none;">Admin</span>
+            </h4>
+            <div style="margin-top: 2px;">
+              <span id="safebot-user-badge" class="safebot-user-badge">Khách</span>
+            </div>
           </div>
         </div>
         <div class="safebot-header-actions">
-          <button class="safebot-header-btn" id="safebot-btn-reset" title="Bắt đầu lại cuộc trò chuyện">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="1 4 1 10 7 10"/>
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-            </svg>
-          </button>
-          <button class="safebot-header-btn" id="safebot-btn-close" title="Thu nhỏ">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <button class="safebot-header-btn" id="safebot-btn-reset" title="Bắt đầu lại cuộc trò chuyện">Làm mới</button>
+          <button class="safebot-header-btn" id="safebot-btn-close" title="Thu nhỏ">Đóng</button>
         </div>
       </div>
 
@@ -313,16 +481,11 @@
       <!-- Input area -->
       <div class="safebot-input-bar">
         <div class="safebot-input-wrap">
-          <input type="text" class="safebot-input" id="safebot-input" placeholder="Nhập câu hỏi cho SafeBot..." autocomplete="off">
-          <button class="safebot-send-btn" id="safebot-send-btn" disabled title="Gửi tin nhắn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
+          <input type="text" class="safebot-input" id="safebot-input" placeholder="Hỏi SafeBot AI điều gì đó..." autocomplete="off">
+          <button class="safebot-send-btn" id="safebot-send-btn" disabled>Gửi</button>
         </div>
         <div class="safebot-footer-hint">
-          <span>🔒 Hoàn toàn bảo mật & bảo vệ quyền lợi học sinh</span>
+          <span id="safebot-account-footer-label">Trợ lý học đường tích hợp Google Gemini AI</span>
         </div>
       </div>
     `;
@@ -333,7 +496,7 @@
     return { launcher, windowEl };
   };
 
-  // Khởi tạo Chatbot logic
+  // Khởi tạo Controller
   const initChatbot = () => {
     const { launcher, windowEl } = buildChatbotUI();
 
@@ -343,18 +506,18 @@
     const sendBtn = document.getElementById('safebot-send-btn');
     const resetBtn = document.getElementById('safebot-btn-reset');
     const closeBtn = document.getElementById('safebot-btn-close');
-    const badge = document.getElementById('safebot-badge');
+    const adminPill = document.getElementById('safebot-admin-header-pill');
+    const userBadge = document.getElementById('safebot-user-badge');
+    const accountFooterLabel = document.getElementById('safebot-account-footer-label');
 
     let isOpen = false;
     let isTyping = false;
 
-    // Toggle Open/Close
     const toggleWindow = (open) => {
       isOpen = typeof open === 'boolean' ? open : !isOpen;
       if (isOpen) {
         launcher.classList.add('open');
         windowEl.classList.add('active');
-        badge.style.display = 'none';
         input.focus();
         scrollToBottom();
       } else {
@@ -366,19 +529,19 @@
     launcher.addEventListener('click', () => toggleWindow());
     closeBtn.addEventListener('click', () => toggleWindow(false));
 
-    // Cuộn xuống tin nhắn mới nhất
     const scrollToBottom = () => {
       setTimeout(() => {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      }, 50);
+      }, 40);
     };
 
-    // Render nút Suggestions
     const renderChips = () => {
       chipsContainer.innerHTML = '';
-      QUICK_SUGGESTIONS.forEach(item => {
+      const list = getPersonalizedSuggestions();
+
+      list.forEach(item => {
         const chip = document.createElement('button');
-        chip.className = 'safebot-chip';
+        chip.className = `safebot-chip ${item.isAdmin ? 'admin-chip' : ''}`;
         chip.type = 'button';
         chip.textContent = item.text;
         chip.addEventListener('click', () => {
@@ -388,37 +551,29 @@
       });
     };
 
-    // Thêm tin nhắn của User
-    const appendUserMessage = (text) => {
+    const appendUserMessageDOM = (text, timeStr) => {
       const row = document.createElement('div');
       row.className = 'safebot-msg-row user';
       row.innerHTML = `
         <div class="safebot-bubble-wrap">
           <div class="safebot-bubble">${formatMarkdown(text)}</div>
-          <span class="safebot-time">${getCurrentTime()}</span>
+          <span class="safebot-time">${timeStr || getCurrentTime()}</span>
         </div>
       `;
       messagesContainer.appendChild(row);
       scrollToBottom();
     };
 
-    // Thêm typing indicator
     const showTyping = () => {
       const row = document.createElement('div');
       row.className = 'safebot-msg-row bot typing-indicator-row';
       row.id = 'safebot-typing-row';
       row.innerHTML = `
-        <div class="safebot-msg-avatar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
-        </div>
+        <div class="safebot-msg-avatar">AI</div>
         <div class="safebot-bubble-wrap">
           <div class="safebot-bubble">
             <div class="safebot-typing-dots">
-              <span></span>
-              <span></span>
-              <span></span>
+              <span></span><span></span><span></span>
             </div>
           </div>
         </div>
@@ -432,8 +587,7 @@
       if (typingEl) typingEl.remove();
     };
 
-    // Thêm tin nhắn của Bot
-    const appendBotMessage = (answerObj) => {
+    const appendBotMessageDOM = (answerObj, timeStr) => {
       const row = document.createElement('div');
       row.className = 'safebot-msg-row bot';
 
@@ -441,59 +595,128 @@
       if (answerObj.actions && answerObj.actions.length > 0) {
         actionsHtml = `
           <div class="safebot-actions-card">
-            ${answerObj.actions.map(act => `
-              <a href="${act.url}" class="safebot-action-link ${act.type || 'secondary'}">
-                ${act.label}
-              </a>
-            `).join('')}
+            ${answerObj.actions.map((act, index) => {
+              if (act.query) {
+                return `
+                  <button type="button" class="safebot-action-link ${act.type || 'secondary'}" data-action-index="${index}">
+                    ${act.label}
+                  </button>
+                `;
+              } else {
+                const targetAttr = act.external ? 'target="_blank" rel="noopener noreferrer"' : '';
+                return `
+                  <a href="${act.url}" class="safebot-action-link ${act.type || 'secondary'}" ${targetAttr}>
+                    ${act.label}
+                  </a>
+                `;
+              }
+            }).join('')}
           </div>
         `;
       }
 
       row.innerHTML = `
-        <div class="safebot-msg-avatar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
-        </div>
+        <div class="safebot-msg-avatar">AI</div>
         <div class="safebot-bubble-wrap">
           <div class="safebot-bubble">
             ${formatMarkdown(answerObj.response)}
             ${actionsHtml}
           </div>
-          <span class="safebot-time">${getCurrentTime()}</span>
+          <span class="safebot-time">${timeStr || getCurrentTime()}</span>
         </div>
       `;
 
+      if (answerObj.actions) {
+        const queryButtons = row.querySelectorAll('button[data-action-index]');
+        queryButtons.forEach(btn => {
+          const idx = parseInt(btn.getAttribute('data-action-index'), 10);
+          const act = answerObj.actions[idx];
+          if (act && act.query) {
+            btn.addEventListener('click', () => {
+              handleUserSend(act.query);
+            });
+          }
+        });
+      }
+
       messagesContainer.appendChild(row);
       scrollToBottom();
-      playChime();
     };
 
-    // Xử lý gửi tin nhắn
-    const handleUserSend = (textToSend) => {
+    const loadAccountChatHistory = () => {
+      messagesContainer.innerHTML = '';
+      const history = getChatHistory();
+
+      if (history.length > 0) {
+        history.forEach(item => {
+          if (item.sender === 'user') {
+            appendUserMessageDOM(item.text, item.time);
+          } else if (item.sender === 'bot') {
+            appendBotMessageDOM({ response: item.response, actions: item.actions }, item.time);
+          }
+        });
+      } else {
+        const greeting = createPersonalizedGreeting();
+        const nowTime = getCurrentTime();
+        appendBotMessageDOM(greeting, nowTime);
+        appendToChatHistory({
+          sender: 'bot',
+          response: greeting.response,
+          actions: greeting.actions,
+          time: nowTime
+        });
+      }
+
+      renderChips();
+    };
+
+    const handleUserSend = async (textToSend) => {
       const text = (textToSend || input.value).trim();
       if (!text || isTyping) return;
 
-      appendUserMessage(text);
+      const userTime = getCurrentTime();
+      appendUserMessageDOM(text, userTime);
+      appendToChatHistory({ sender: 'user', text, time: userTime });
+
       input.value = '';
       sendBtn.disabled = true;
       isTyping = true;
 
-      // Giả lập typing thời gian thực
       showTyping();
 
-      setTimeout(() => {
+      try {
+        const currentHistory = getChatHistory();
+        const answer = await resolveBotAnswer(text, currentHistory);
+        const botTime = getCurrentTime();
         removeTyping();
-        const answer = findAnswer(text);
-        appendBotMessage(answer);
+        appendBotMessageDOM(answer, botTime);
+        appendToChatHistory({
+          sender: 'bot',
+          response: answer.response,
+          actions: answer.actions,
+          time: botTime
+        });
+      } catch (err) {
+        removeTyping();
+        const errorAnswer = {
+          title: 'SafeBot AI',
+          response: 'Đã xảy ra sự cố khi kết nối đến dịch vụ AI. Bạn vui lòng thử lại sau giây lát nhé.',
+          actions: []
+        };
+        const botTime = getCurrentTime();
+        appendBotMessageDOM(errorAnswer, botTime);
+        appendToChatHistory({
+          sender: 'bot',
+          response: errorAnswer.response,
+          actions: errorAnswer.actions,
+          time: botTime
+        });
+      } finally {
         isTyping = false;
-        // Tự động focus lại vào input
         if (isOpen) input.focus();
-      }, 650);
+      }
     };
 
-    // Input events
     input.addEventListener('input', () => {
       sendBtn.disabled = !input.value.trim();
     });
@@ -509,26 +732,75 @@
       handleUserSend();
     });
 
-    // Reset Chatbot
-    const resetChat = () => {
-      messagesContainer.innerHTML = '';
-      const greeting = KNOWLEDGE_BASE.find(k => k.id === 'greeting');
-      if (greeting) {
-        appendBotMessage(greeting);
-      }
-      renderChips();
-    };
-
     resetBtn.addEventListener('click', () => {
-      if (confirm('Bạn có muốn bắt đầu lại cuộc trò chuyện với SafeBot không?')) {
-        resetChat();
+      const accountName = currentUserProfile.fullName || (currentUserProfile.role === 'guest' ? 'Khách' : 'tài khoản này');
+      if (confirm(`Bạn có muốn xóa toàn bộ lịch sử trò chuyện của ${accountName} và bắt đầu lại không?`)) {
+        clearCurrentChatHistory();
+        loadAccountChatHistory();
       }
     });
 
-    // Khởi tạo ban đầu
-    resetChat();
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        currentUser = user;
+        currentUserProfile.uid = user.uid;
+        currentUserProfile.email = user.email || '';
+        currentUserProfile.fullName = user.displayName || user.email || '';
+        currentUserProfile.role = 'student';
 
-    // Export Global API để các thành phần khác có thể kích hoạt
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            currentUserProfile.role = data.role || 'student';
+            currentUserProfile.fullName = data.fullName || currentUserProfile.fullName;
+            currentUserProfile.gradeClass = data.gradeClass || '';
+            currentUserProfile.school = data.school || '';
+            currentUserProfile.avatar = data.avatar || '';
+          }
+        } catch (err) {
+          console.warn('SafeBot: Không thể lấy vai trò người dùng:', err);
+        }
+      } else {
+        currentUser = null;
+        currentUserProfile = {
+          uid: null,
+          fullName: '',
+          role: 'guest',
+          gradeClass: '',
+          school: '',
+          email: '',
+          avatar: ''
+        };
+      }
+
+      const role = currentUserProfile.role;
+      const fullName = currentUserProfile.fullName;
+      const grade = currentUserProfile.gradeClass;
+
+      if (role === 'admin') {
+        if (adminPill) adminPill.style.display = 'inline-block';
+        if (userBadge) userBadge.textContent = `Admin: ${fullName || 'Quản trị viên'}`;
+        if (accountFooterLabel) accountFooterLabel.textContent = `Đăng nhập: Admin (${fullName || 'Quản trị viên'})`;
+      } else if (role === 'student') {
+        if (adminPill) adminPill.style.display = 'none';
+        if (userBadge) userBadge.textContent = fullName ? `Học sinh: ${fullName}${grade ? ` (${grade})` : ''}` : 'Học sinh';
+        if (accountFooterLabel) accountFooterLabel.textContent = `Tài khoản: ${fullName || 'Học sinh'}${grade ? ` (${grade})` : ''}`;
+      } else if (role === 'teacher') {
+        if (adminPill) adminPill.style.display = 'none';
+        if (userBadge) userBadge.textContent = `Giáo viên: ${fullName || 'Thầy/Cô'}`;
+        if (accountFooterLabel) accountFooterLabel.textContent = `Tài khoản: Giáo viên ${fullName || ''}`;
+      } else {
+        if (adminPill) adminPill.style.display = 'none';
+        if (userBadge) userBadge.textContent = 'Khách chưa đăng nhập';
+        if (accountFooterLabel) accountFooterLabel.textContent = 'Trợ lý học đường tích hợp Google Gemini AI';
+      }
+
+      loadAccountChatHistory();
+    });
+
+    loadAccountChatHistory();
+
     window.SafeBot = {
       open: () => toggleWindow(true),
       close: () => toggleWindow(false),
@@ -536,11 +808,16 @@
       ask: (question) => {
         toggleWindow(true);
         handleUserSend(question);
+      },
+      getRole: () => currentUserProfile.role,
+      getProfile: () => ({ ...currentUserProfile }),
+      clearHistory: () => {
+        clearCurrentChatHistory();
+        loadAccountChatHistory();
       }
     };
   };
 
-  // Tự động khởi chạy khi DOM sẵn sàng
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initChatbot);
   } else {

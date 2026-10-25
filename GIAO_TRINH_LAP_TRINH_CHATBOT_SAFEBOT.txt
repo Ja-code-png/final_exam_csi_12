@@ -1,0 +1,428 @@
+================================================================================
+           KHÓA HỌC: XÂY DỰNG TRỢ LÝ ẢO HỌC ĐƯỜNG SAFEBOT (TỪ A ĐẾN Z)
+         GIẢNG VIÊN HƯỚNG DẪN: THẦY GIÁO LẬP TRÌNH | DỰ ÁN: SAFE SCHOOL
+================================================================================
+
+Chào em! Rất vui vì em đã chủ động muốn học và hiểu sâu bản chất từng dòng code.
+Là một lập trình viên, việc "copy - paste" cho chạy được thì ai cũng làm được,
+nhưng hiểu rõ "tại sao dòng code này lại nằm ở đây", "tư duy đằng sau nó là gì"
+mới là điều biến em thành một lập trình viên giỏi.
+
+Hôm nay, thầy sẽ đồng hành cùng em bẻ nhỏ toàn bộ tính năng Chatbot SafeBot thành 
+5 học phần dễ hiểu nhất, từ tư duy hệ thống, thiết kế giao diện cho đến thuật toán
+xử lý ngôn ngữ và kỹ thuật JavaScript chuyên nghiệp.
+
+Nào, chúng ta cùng bắt đầu nhé!
+
+--------------------------------------------------------------------------------
+MỤC LỤC BÀI HỌC
+--------------------------------------------------------------------------------
+1. PHẦN 1: TƯ DUY KIẾN TRÚC & TẠI SAO LẠI CHỌN GIẢI PHÁP NÀY?
+2. PHẦN 2: THIẾT KẾ GIAO DIỆN HIỆN ĐẠI (HTML DỰNG HÌNH & CSS GLASSMORPHISM)
+3. PHẦN 3: "BỘ NÃO" CỦA BOT - THUẬT TOÁN NHẬN DIỆN Ý ĐỊNH & XỬ LÝ TIẾNG VIỆT
+4. PHẦN 4: LẬP TRÌNH JAVASCRIPT ĐIỀU KHIỂN & KỸ THUẬT DOM NÂNG CAO
+5. PHẦN 5: BÀI TOÁN ĐƯỜNG DẪN TƯƠNG ĐỐI (PATH RESOLVER) KHI DỰ ÁN CÓ NHIỀU THƯ MỤC
+6. PHẦN 6: BÀI TẬP VỀ NHÀ VÀ THỬ THÁCH MỞ RỘNG
+================================================================================
+
+
+================================================================================
+PHẦN 1: TƯ DUY KIẾN TRÚC & TẠI SAO LẠI CHỌN GIẢI PHÁP NÀY?
+================================================================================
+
+Thầy hỏi em một câu nhé: "Khi nói đến Chatbot, có phải em sẽ nghĩ ngay đến việc
+phải gọi API của OpenAI (ChatGPT) hay Gemini không?"
+
+Đúng, gọi AI rất thông minh. Nhưng trong bối cảnh dự án này của chúng ta:
+1. Chi phí: API của bên thứ ba tốn phí và cần thẻ visa quốc tế.
+2. Bảo mật: Dự án Safe School là web tĩnh client-side, nếu để lộ API Key ở frontend
+   thì bất kỳ ai F12 lên cũng lấy cắp được key của em.
+3. Độ trễ: Học sinh gặp nguy hiểm hoặc bị bắt nạt cần phản hồi tức thì trong 0.5s,
+   không thể đợi mạng chập chờn gọi server nước ngoài 3-5 giây.
+4. Tính chính xác: Trong môi trường học đường, thông tin về Hotline (111, 113) và
+   quy trình cứu nạn cần chuẩn xác 100%, không được để AI "chém gió" (hallucination).
+
+=> VÌ VẬY, thầy trò ta lựa chọn kiến trúc: 
+   "KNOWLEDGE-BASE COMBINED WITH NATURAL KEYWORD & INTENT MATCHING"
+   (Hệ cơ sở tri thức kết hợp bộ máy so khớp ý định ngôn ngữ tự nhiên).
+
+* Luồng hoạt động (Data Flow):
+  [Người dùng gõ câu hỏi] 
+           │
+           ▼
+  [Chuẩn hóa tiếng Việt (Xóa dấu, chuyển chữ thường)]
+           │
+           ▼
+  [So khớp từ khóa trọng số (Scoring Matcher)]
+           │
+           ▼
+  [Tìm thấy ý định?] ───(Có)───► [Lấy câu trả lời + Các nút bấm điều hướng SOS/Test/Chat]
+           │
+         (Không)
+           │
+           ▼
+  [Phản hồi khéo léo dự phòng (Fallback) + Gợi ý các nút chọn nhanh]
+           │
+           ▼
+  [Giả lập hiệu ứng gõ phím -> Render tin nhắn lên màn hình -> Phát âm thanh chuông]
+
+
+================================================================================
+PHẦN 2: THIẾT KẾ GIAO DIỆN HIỆN ĐẠI (CSS GLASSMORPHISM & ANIMATION)
+================================================================================
+
+Một ứng dụng dù code logic giỏi đến mấy mà giao diện thô sơ thì người dùng cũng
+sẽ không muốn ở lại. Ở đây chúng ta dùng phong cách "Glassmorphism" (kính mờ sang trọng)
+và Micro-animations.
+
+Thầy chia giao diện ra làm 3 khối chính:
+
+--------------------------------------------------------------------------------
+Khối 1: Nút tròn mở Chatbot (Floating Action Button)
+--------------------------------------------------------------------------------
+Em hãy quan sát đoạn mã trong file `src/css/chatbot.css`:
+
+```css
+.safebot-launcher {
+  position: fixed;          /* Cố định nút ở góc màn hình dù người dùng có cuộn web */
+  bottom: 24px;
+  right: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;       /* Làm nút tròn vo */
+  background: linear-gradient(135deg, #6C5CE7 0%, #00D2D3 100%); /* Màu gradient tím - xanh */
+  box-shadow: 0 8px 28px rgba(108, 92, 231, 0.45);               /* Đổ bóng phát sáng */
+  animation: safebotPulse 3s infinite;                           /* Hiệu ứng thở (nhịp tim) */
+}
+```
+
+* BÀI HỌC CỦA THẦY:
+- `position: fixed` rất quan trọng! Nó biến nút thành một "vật thể bay" độc lập với luồng
+  cuộn trang. Dù học sinh đang ở đầu trang hay cuối trang, nút vẫn nằm gọn gàng góc phải.
+- Hiệu ứng `safebotPulse`: Dùng `@keyframes` phóng to vòng shadow mờ dần ra ngoài rồi biến mất.
+  Hiệu ứng này báo hiệu ngầm cho người dùng: "Tôi đang sống và sẵn sàng giúp đỡ bạn!".
+
+--------------------------------------------------------------------------------
+Khối 2: Cửa sổ Chat kính mờ (The Glassmorphism Window)
+--------------------------------------------------------------------------------
+```css
+.safebot-window {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  width: 390px;
+  height: 600px;
+  background: rgba(18, 18, 34, 0.94);   /* Màu nền tối hơi trong suốt */
+  backdrop-filter: blur(24px);          /* Mấu chốt tạo nên kính mờ: làm nhòe nội dung phía sau */
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12); /* Đường viền mảnh như mép kính */
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  transform: translateY(20px) scale(0.92);      /* Ban đầu thu nhỏ và thụt xuống một chút */
+  opacity: 0;                                   /* Ẩn đi */
+  pointer-events: none;                         /* Không cho chuột bấm vào khi đang ẩn */
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1); /* Hiệu ứng mở bung cực mượt */
+}
+
+.safebot-window.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);            /* Phóng to về kích thước gốc */
+}
+```
+
+* BÀI HỌC CỦA THẦY:
+- Em đừng bao giờ dùng `display: none` rồi đổi sang `display: block` nếu muốn có hiệu ứng mở mượt mà!
+  Bởi vì thuộc tính `display` không hỗ trợ animation `transition`.
+- Cách chuyên nghiệp: Kết hợp `opacity: 0`, `transform` và `pointer-events: none`. Khi mở, chỉ việc
+  thêm class `.active` vào là xong!
+
+--------------------------------------------------------------------------------
+Khối 3: Hiệu ứng 3 dấu chấm nhấp nháy khi Bot đang soạn tin (Typing Indicator)
+--------------------------------------------------------------------------------
+```css
+.safebot-typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00D2D3;
+  animation: safebotDotBlink 1.4s infinite ease-in-out both;
+}
+
+/* Cho dấu chấm 1 và 2 nhảy sớm hơn dấu chấm 3 để tạo thành làn sóng */
+.safebot-typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.safebot-typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+```
+- Bí quyết ở đây là thuộc tính `animation-delay` âm! Nó giúp chu kỳ lượn sóng diễn ra ngay lập tức
+  mà không bị giật hay chờ đợi.
+
+
+================================================================================
+PHẦN 3: "BỘ NÃO" CỦA BOT - THUẬT TOÁN NHẬN DIỆN Ý ĐỊNH (NLP LOGIC)
+================================================================================
+
+Bây giờ chúng ta sang file `src/js/chatbot.js`. Đây chính là linh hồn của hệ thống.
+
+--------------------------------------------------------------------------------
+Bước 1: Cấu trúc một "Kiến thức" (Knowledge Item) trông như thế nào?
+--------------------------------------------------------------------------------
+Thầy thiết kế mỗi tri thức thành một Object gồm:
+- `id`: Định danh duy nhất.
+- `keywords`: Danh sách từ khóa kích hoạt.
+- `response`: Câu trả lời được định dạng Markdown rõ ràng.
+- `actions`: Mảng các nút bấm điều hướng hỗ trợ (Link, Gọi điện).
+
+Ví dụ:
+```javascript
+{
+  id: 'emergency_sos',
+  keywords: ['sos', 'khẩn cấp', 'cấp cứu', 'nguy hiểm', 'bị đánh', 'cứu tôi', 'tự tử'],
+  title: 'Hỗ trợ Khẩn cấp SOS',
+  response: '🚨 BẠN ĐANG GẶP NGUY HIỂM? HÃY GIỮ BÌNH TĨNH VÀ HÀNH ĐỘNG NGAY...',
+  actions: [
+    { label: '🚨 Gửi báo cáo SOS khẩn cấp', url: 'report-sos.html', type: 'danger' },
+    { label: '📞 Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' }
+  ]
+}
+```
+
+--------------------------------------------------------------------------------
+Bước 2: Xử lý bài toán người dùng gõ không dấu hoặc gõ sai
+--------------------------------------------------------------------------------
+Học sinh khi bị bắt nạt thường rất hoảng loạn, các em có thể gõ vội: "giup em voi bi danh roi"
+hoặc "stress qua lam sao day".
+Nếu em dùng `includes()` thông thường, máy sẽ không hiểu!
+
+Vì vậy, thầy viết hàm `removeAccents` (loại bỏ dấu tiếng Việt chuẩn quốc tế):
+```javascript
+const removeAccents = (str) => {
+  return str
+    .normalize('NFD')                     // Tách chữ cái và dấu thanh thành 2 phần tử Unicode riêng biệt
+    .replace(/[\u0300-\u036f]/g, '')     // Xóa sạch toàn bộ các ký tự dấu thanh Unicode
+    .replace(/đ/g, 'd')                   // Đổi đ thường thành d
+    .replace(/Đ/g, 'D')                   // Đổi Đ hoa thành D
+    .toLowerCase()                        // Chuyển toàn bộ về chữ thường
+    .trim();                              // Xóa khoảng trắng thừa hai đầu
+};
+```
+* Giải thích cơ chế `normalize('NFD')`:
+  Chữ `ế` ban đầu là một ký tự duy nhất (Mã Unicode \u1EBF). Khi chạy `normalize('NFD')`,
+  trình duyệt sẽ tách nó thành chữ `e` cơ sở + dấu sắc + dấu nón. Regex `[\u0300-\u036f]`
+  chính là dải mã chứa các dấu đó, xóa đi thì chỉ còn lại chữ `e` thuần túy!
+
+--------------------------------------------------------------------------------
+Bước 3: Thuật toán tính điểm khớp từ khóa (Keyword Scoring Matcher)
+--------------------------------------------------------------------------------
+Thay vì chỉ `if / else` cứng nhắc, chúng ta dùng cơ chế chấm điểm:
+```javascript
+const findAnswer = (userInput) => {
+  const cleanRaw = userInput.toLowerCase();
+  const cleanNoAccent = removeAccents(userInput);
+
+  let bestMatch = null;
+  let highestScore = 0;
+
+  for (const item of KNOWLEDGE_BASE) {
+    let score = 0;
+    for (const kw of item.keywords) {
+      const kwNoAccent = removeAccents(kw);
+      
+      // Nếu khớp chính xác cả dấu tiếng Việt -> Cộng 3 điểm
+      if (cleanRaw.includes(kw.toLowerCase())) {
+        score += 3;
+      } 
+      // Nếu khớp phiên bản không dấu -> Cộng 2 điểm
+      else if (cleanNoAccent.includes(kwNoAccent)) {
+        score += 2;
+      }
+    }
+
+    // Ghi nhận chủ đề có số điểm cao nhất
+    if (score > highestScore) {
+      highestScore = score;
+      bestMatch = item;
+    }
+  }
+
+  // Nếu tìm được chủ đề có điểm > 0 thì trả về, ngược lại trả về câu trả lời dự phòng (Fallback)
+  return (bestMatch && highestScore > 0) ? bestMatch : FALLBACK_ANSWER;
+};
+```
+* Ý nghĩa sư phạm:
+  Cách tính điểm này giúp bot hiểu được câu nói dài! Ví dụ học sinh gõ:
+  "Thầy ơi em đang bị stress và áp lực điểm số quá"
+  -> Từ "stress" (+3đ), "áp lực" (+3đ) => Chủ đề sức khỏe tâm lý đạt 6 điểm và chiến thắng!
+
+
+================================================================================
+PHẦN 4: LẬP TRÌNH JAVASCRIPT ĐIỀU KHIỂN & KỸ THUẬT DOM NÂNG CAO
+================================================================================
+
+Bây giờ đến phần tương tác: làm sao để bấm nút thì cửa sổ mở ra, gõ tin nhắn thì
+hiện lên màn hình và cuộn xuống?
+
+--------------------------------------------------------------------------------
+Kỹ thuật 1: DOM Injection (Tự lắp ghép giao diện vào trang)
+--------------------------------------------------------------------------------
+Tại sao thầy không viết sẵn mã HTML của Chatbot vào file `index.html`?
+Vì dự án có rất nhiều trang: `index.html`, `report.html`, `blogs.html`, `tests.html`...
+Nếu copy-paste HTML vào từng file thì:
+- Quá mất thời gian.
+- Khi cần sửa một cái nút, em phải mở cả chục file lên sửa lại.
+
+Giải pháp cao cấp: Dùng hàm `buildChatbotUI()` trong JavaScript:
+```javascript
+const buildChatbotUI = () => {
+  const launcher = document.createElement('button');
+  launcher.id = 'safebot-launcher';
+  launcher.innerHTML = `...các icon svg...`;
+
+  const windowEl = document.createElement('div');
+  windowEl.id = 'safebot-window';
+  windowEl.innerHTML = `...khung chat...`;
+
+  // Tự động tiêm vào cuối thẻ <body> của trang hiện tại
+  document.body.appendChild(launcher);
+  document.body.appendChild(windowEl);
+};
+```
+=> Kết quả: Bất kỳ trang web nào, chỉ cần nhúng 1 dòng `<script src="chatbot.js">`
+là tự động có ngay một trợ lý ảo hoàn chỉnh!
+
+--------------------------------------------------------------------------------
+Kỹ thuật 2: Xử lý chuỗi sự kiện khi người dùng gửi tin nhắn
+--------------------------------------------------------------------------------
+Khi người dùng bấm Gửi hoặc ấn phím Enter:
+1. Lấy nội dung ô input (`input.value.trim()`).
+2. Xóa trắng ô input và khóa nút Gửi (`sendBtn.disabled = true`).
+3. Chèn bong bóng tin nhắn của người dùng lên màn hình.
+4. Hiện 3 dấu chấm đang gõ (`showTyping()`).
+5. Gọi hàm `scrollToBottom()` để khung chat luôn cuộn xuống đáy.
+6. Dùng `setTimeout(..., 650)` để tạo độ trễ tự nhiên (đợi 0.65 giây mới trả lời).
+7. Xóa 3 dấu chấm, hiển thị câu trả lời của Bot và phát tiếng "ting" dễ thương!
+
+Code minh họa:
+```javascript
+const handleUserSend = (textToSend) => {
+  const text = (textToSend || input.value).trim();
+  if (!text || isTyping) return; // Nếu trống hoặc bot đang trả lời dở thì bỏ qua
+
+  appendUserMessage(text);
+  input.value = '';
+  sendBtn.disabled = true;
+  isTyping = true;
+
+  showTyping(); // 1. Hiện dấu 3 chấm
+
+  setTimeout(() => {
+    removeTyping(); // 2. Tắt dấu 3 chấm
+    const answer = findAnswer(text); // 3. Tìm đáp án
+    appendBotMessage(answer); // 4. Hiển thị đáp án
+    isTyping = false;
+  }, 650);
+};
+```
+
+--------------------------------------------------------------------------------
+Kỹ thuật 3: Tạo âm thanh báo tin nhắn bằng Web Audio API (Không cần tải file)
+--------------------------------------------------------------------------------
+Thầy không dùng file `.mp3` vì nếu file bị xóa hoặc mạng yếu thì âm thanh sẽ lỗi.
+HTML5 cung cấp `AudioContext` - một "bộ tổng hợp âm thanh kỹ thuật số" có sẵn trong mọi trình duyệt:
+
+```javascript
+const playChime = () => {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator(); // Tạo bộ dao động sóng âm
+  const gain = ctx.createGain();       // Tạo bộ điều chỉnh âm lượng
+
+  osc.type = 'sine'; // Sóng hình sin mềm mại, trong trẻo
+  
+  // Tần số nốt Rê (D5 - 587Hz) chuyển nhanh lên nốt La (A5 - 880Hz) trong 0.12 giây
+  osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+
+  // Âm lượng giảm dần về 0 để không bị chói tai
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 0.25); // Phát đúng 0.25 giây rồi tự ngắt
+};
+```
+Em thấy không? Chỉ với 15 dòng code toán học và vật lý âm thanh, chúng ta đã tạo ra
+một tiếng chuông thông báo cực kỳ tinh tế mà dung lượng file bằng 0KB!
+
+
+================================================================================
+PHẦN 5: BÀI TOÁN ĐƯỜNG DẪN TƯƠNG ĐỐI (PATH RESOLVER) KHI WEB CÓ NHIỀU CẤP THƯ MỤC
+================================================================================
+
+Đây là một lỗi kinh điển mà học sinh mới học web hay mắc phải!
+Em hãy chú ý:
+- File `index.html` nằm ở thư mục gốc (root). Link tới trang báo cáo SOS sẽ là: `pages/report-sos.html`.
+- Nhưng file `tests.html` lại nằm trong thư mục `pages/`. Nếu ở trang `tests.html` mà em
+  vẫn dùng link `pages/report-sos.html` thì trình duyệt sẽ tìm thành: `pages/pages/report-sos.html` => LỖI 404 NGAY!
+
+Vì Chatbot của chúng ta chạy ở TẤT CẢ CÁC TRANG, nên nó phải tự biết nó đang đứng ở đâu để sinh ra đường link chuẩn:
+
+```javascript
+const getBasePath = () => {
+  const path = window.location.pathname.replace(/\\/g, '/');
+
+  // Nếu người dùng đang đứng ở trong thư mục /pages/
+  if (path.includes('/pages/')) {
+    return {
+      pages: '',      // Muốn sang trang khác cùng thư mục pages chỉ cần gõ tên file: 'report-sos.html'
+      root: '../'     // Muốn về trang chủ thì lùi ra một cấp: '../index.html'
+    };
+  } 
+  // Nếu người dùng đang đứng ở trang chủ ngoài cùng
+  else {
+    return {
+      pages: 'pages/', // Phải chui vào thư mục pages/: 'pages/report-sos.html'
+      root: ''
+    };
+  }
+};
+```
+Nhờ hàm này, khi SafeBot tạo nút bấm, nó chỉ việc gọi: `${basePath.pages}report-sos.html`.
+Đứng ở bất kỳ đâu trên website thì link bấm vào cũng chính xác 100%!
+
+
+================================================================================
+PHẦN 6: BÀI TẬP VỀ NHÀ & THỬ THÁCH MỞ RỘNG (DÀNH RIÊNG CHO EM)
+================================================================================
+
+Để biến kiến thức của thầy thành kiến thức của chính em, thầy giao cho em 3 bài tập nhỏ sau:
+
+Bài tập 1 (Dễ):
+- Mở file `src/js/chatbot.js`, tìm mảng `KNOWLEDGE_BASE`.
+- Thêm một chủ đề mới: "Quy tắc an toàn trong phòng thí nghiệm hóa học/thực hành".
+  Bao gồm các từ khóa gợi ý như `thi nghiem`, `hoa chat`, `chay no` và đưa ra lời khuyên an toàn.
+
+Bài tập 2 (Vừa):
+- Thêm một nút icon "Loa" (Mute/Unmute) trên thanh tiêu đề của Chatbot (`safebot-header`).
+- Khi học sinh bấm vào thì bật/tắt tiếng chuông thông báo (lưu trạng thái `isMuted` vào biến).
+
+Bài tập 3 (Nâng cao):
+- Sử dụng `localStorage` để lưu lại các tin nhắn đã trò chuyện.
+- Khi học sinh chuyển giữa các trang web hoặc F5 tải lại trang, lịch sử hội thoại
+  vẫn còn nguyên chứ không bị mất đi.
+
+--------------------------------------------------------------------------------
+LỜI DẶN DÒ CỦA THẦY
+--------------------------------------------------------------------------------
+Học lập trình không phải là ghi nhớ từng ký tự, mà là rèn luyện khả năng phân tích vấn đề
+thành các mảnh ghép nhỏ rồi dùng logic kết nối chúng lại. 
+
+Em hãy lưu file tài liệu này lại, mở từng file code (`chatbot.js`, `chatbot.css`, `index.html`)
+và đối chiếu lại từng đoạn thầy đã giảng giải ở trên. Bất cứ khi nào có chỗ nào chưa hiểu,
+hãy cứ mạnh dạn hỏi lại thầy nhé!
+
+Chúc em học tập thật tốt và tạo ra được nhiều sản phẩm tuyệt vời hơn nữa!
+================================================================================
+                                 HẾT BÀI GIẢNG
+================================================================================
