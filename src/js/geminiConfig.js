@@ -1,17 +1,16 @@
-/**
- * Cấu hình Google Gemini AI cho SafeBot
- * Safe School Project
- * Tích hợp sẵn Gemini AI đời mới nhất (Gemini 3.8 Flash)
- */
-
 export const GEMINI_CONFIG = {
-  // API Key được tích hợp sẵn bảo mật trong code
-  apiKey: "AQ.Ab8RN6IqHFz5elQgGkCZN6a6f9Y4xmgCJ-yHLJ2DnMw1eFUVyw",
+  // API Key được tích hợp sẵn trong hệ thống Safe School
+  apiKey: "AQ.Ab8RN6JK7UQeo0_TNAhjjZOVGQRQztzyed4eUUud4gXrSzwv1Q",
+
+  // Danh sách các mô hình AI thế hệ mới có tốc độ phản hồi nhanh (1-3s) và độ ổn định cao nhất
+  primaryModel: "gemini-flash-lite-latest",
+  fallbackModel: "gemini-3.5-flash-lite",
+  models: [
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview"
+  ],
   
-  // Model đời mới nhất của Google Gemini AI
-  primaryModel: "gemini-3.8-flash",
-  fallbackModel: "gemini-flash-latest",
-  
-  // Endpoint chính thức của Google Generative Language API
   baseUrl: "https://generativelanguage.googleapis.com/v1beta/models"
 };

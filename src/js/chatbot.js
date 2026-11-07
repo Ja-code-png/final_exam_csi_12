@@ -1,12 +1,4 @@
-/**
- * SafeBot - Trợ lý ảo AI Học đường tích hợp Google Gemini AI đời mới nhất
- * Safe School Project
- * - Giao diện thuần chữ tối giản (Text-Only), không icon emoji
- * - Khóa API được tích hợp sẵn bảo mật trong code, không hiển thị trên giao diện
- * - Trò chuyện AI tự nhiên, thông minh qua mô hình Gemini Flash thế hệ mới
- * - Thống kê số liệu Dashboard thời gian thực cho Quản trị viên (Admin)
- * - Lưu trữ và phân tách lịch sử trò chuyện theo từng tài khoản cá nhân hóa
- */
+
 
 import { 
   auth, 
@@ -109,7 +101,169 @@ import { GEMINI_CONFIG } from './geminiConfig.js';
   };
 
   // ============================================================================
-  // GỌI GOOGLE GEMINI AI ĐỜI MỚI NHẤT
+  // ÂM THANH THÔNG BÁO BẰNG WEB AUDIO API (TỰ NHIÊN, KHÔNG CẦN TẢI FILE)
+  // ============================================================================
+  const playChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } catch (e) {}
+  };
+
+  // ============================================================================
+  // HỆ TRI THỨC AN TOÀN HỌC ĐƯỜNG DỰ PHÒNG (LOCAL KNOWLEDGE BASE FALLBACK)
+  // Cung cấp giải pháp an toàn ngay cả khi mạng lag, mất kết nối hoặc API quá tải
+  // ============================================================================
+  const LOCAL_KNOWLEDGE_BASE = [
+    {
+      id: 'emergency_sos',
+      keywords: ['sos', 'khan cap', 'cap cuu', 'nguy hiem', 'bi danh', 'cuu toi', 'dang bi de doa', 'tu tu', 'nguy cap'],
+      title: 'Hỗ trợ Khẩn cấp SOS',
+      response: `BẠN ĐANG GẶP NGUY HIỂM? HÃY GIỮ BÌNH TĨNH VÀ HÀNH ĐỘNG NGAY:\n\n1. Di chuyển ngay tới nơi an toàn: phòng giáo viên, bảo vệ hoặc nơi đông người.\n2. Gửi Báo cáo SOS khẩn cấp: Nhấn nút bên dưới để phát tín hiệu kèm định vị tới giáo viên và Ban Giám hiệu.\n3. Gọi các đường dây nóng hỗ trợ khẩn cấp miễn phí 24/7:\n- Tổng đài Quốc gia Bảo vệ Trẻ em: 111\n- Cảnh sát phản ứng nhanh: 113\n- Cấp cứu y tế: 115`,
+      actions: [
+        { label: 'Gửi báo cáo SOS khẩn cấp', url: `${basePath.pages}report-sos.html`, type: 'danger' },
+        { label: 'Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' }
+      ]
+    },
+    {
+      id: 'bullying_advice',
+      keywords: ['bat nat', 'bi bat nat', 'bao luc', 'danh nhau', 'de doa', 'tran lot', 'tay chay', 'co lap'],
+      title: 'Xử lý khi bị Bắt nạt học đường',
+      response: `HƯỚNG DẪN AN TOÀN KHI BỊ BẮT NẠT:\n\n- Bạn hoàn toàn không có lỗi: Bắt nạt là hành vi vi phạm kỷ luật và pháp luật, bạn không phải chịu đựng một mình.\n- Giữ an toàn: Tránh đối đầu bạo lực, tìm cách rời khỏi khu vực nguy hiểm.\n- Lưu giữ bằng chứng: Chụp lại tin nhắn, hình ảnh, nhớ rõ thời gian, địa điểm và người chứng kiến.\n- Lên tiếng và tìm sự giúp đỡ: Báo ngay cho thầy cô chủ nhiệm, phụ huynh hoặc gửi báo cáo bảo mật trên Safe School.`,
+      actions: [
+        { label: 'Gửi báo cáo chi tiết', url: `${basePath.pages}report.html`, type: 'primary' },
+        { label: 'Nói chuyện với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' }
+      ]
+    },
+    {
+      id: 'cyberbullying',
+      keywords: ['bao luc mang', 'cyberbullying', 'noi xau', 'beu rieu', 'anh che', 'boc phot', 'mang xa hoi', 'facebook', 'tiktok'],
+      title: 'Phòng chống Bạo lực trên không gian mạng',
+      response: `CÁCH ĐỐI PHÓ VỚI BẠO LỰC MẠNG:\n\n1. Không đáp trả tiêu cực: Tránh để kẻ xấu kích động cảm xúc của bạn.\n2. Chụp màn hình làm bằng chứng: Lưu lại toàn bộ tin nhắn, bài đăng hoặc bình luận bêu riếu.\n3. Chặn và báo cáo tài khoản: Sử dụng chức năng Chặn (Block) và Báo cáo vi phạm (Report) trên mạng xã hội.\n4. Bảo mật tài khoản: Đổi mật khẩu mạnh, bật xác thực 2 bước.\n5. Báo cho nhà trường: Gửi thông tin qua Safe School để được giáo viên can thiệp.`,
+      actions: [
+        { label: 'Báo cáo sự việc mạng', url: `${basePath.pages}report.html`, type: 'primary' },
+        { label: 'Đọc cẩm nang an toàn', url: `${basePath.pages}blogs.html`, type: 'secondary' }
+      ]
+    },
+    {
+      id: 'mental_health',
+      keywords: ['stress', 'ap luc', 'buon', 'khoc', 'tram cam', 'lo au', 'met moi', 'tam ly', 'be tac', 'so di hoc'],
+      title: 'Chăm sóc Sức khỏe Tâm lý',
+      response: `MÌNH LUÔN Ở ĐÂY ĐỒNG HÀNH VÀ LẮNG NGHE BẠN:\n\nCăng thẳng và áp lực học tập là cảm xúc mà nhiều bạn học sinh gặp phải. Bạn đừng ôm nỗi buồn một mình nhé:\n\n- Hít thở sâu và dành thời gian nghỉ ngơi, nghe một bản nhạc nhẹ.\n- Làm bài Trắc nghiệm tâm lý DASS-21 trên hệ thống để đánh giá mức độ căng thẳng hiện tại.\n- Trò chuyện 1-1 với Chuyên gia tâm lý học đường hoàn toàn bảo mật và miễn phí.`,
+      actions: [
+        { label: 'Làm trắc nghiệm DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' },
+        { label: 'Chat với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' }
+      ]
+    },
+    {
+      id: 'anonymous_reporting',
+      keywords: ['an danh', 'bi mat', 'giau ten', 'so bi tra thu', 'lo danh tinh'],
+      title: 'Báo cáo Ẩn danh An toàn',
+      response: `TÍNH NĂNG BÁO CÁO ẨN DANH TRÊN SAFE SCHOOL:\n\n- Hệ thống Safe School bảo vệ danh tính của bạn 100%. Bạn có thể gửi báo cáo mà không cần đăng nhập hoặc chọn chế độ ẩn danh.\n- Khi gửi thành công, bạn sẽ nhận được Mã theo dõi riêng biệt để kiểm tra tiến độ giải quyết của nhà trường.\n- Mọi thông tin bằng chứng đều được mã hóa an toàn.`,
+      actions: [
+        { label: 'Gửi báo cáo ẩn danh ngay', url: `${basePath.pages}report.html`, type: 'primary' }
+      ]
+    },
+    {
+      id: 'hotlines',
+      keywords: ['hotline', 'so dien thoai', 'tong dai', 'duong day nong', 'lien he'],
+      title: 'Danh bạ Đường dây nóng Hỗ trợ',
+      response: `DANH BẠ CÁC SỐ ĐIỆN THOẠI HỖ TRỢ KHẨN CẤP (MIỄN PHÍ 24/7):\n\n- 111: Tổng đài Quốc gia Bảo vệ Trẻ em (Tư vấn tâm lý, pháp luật, can thiệp khẩn cấp).\n- 113: Cảnh sát phản ứng nhanh (Các trường hợp bạo lực, đe dọa vũ lực nguy hiểm).\n- 115: Cấp cứu y tế.\n- 1900 969 680: Đường dây nóng tư vấn sức khỏe tâm thần Ngày Mai.`,
+      actions: [
+        { label: 'Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' },
+        { label: 'Gọi Cảnh sát 113', url: 'tel:113', type: 'danger' }
+      ]
+    },
+    {
+      id: 'school_info',
+      keywords: ['truong hoc', 'thong tin truong', 'dai hoc', 'bach khoa', 'kinh te', 'quoc gia', 'tuyen sinh', 'diem chuan', 'nganh hoc'],
+      title: 'Tra cứu Thông tin Trường học & Tuyển sinh',
+      response: `TRA CỨU THÔNG TIN TRƯỜNG HỌC & TUYỂN SINH:\n\nSafe School hỗ trợ học sinh định hướng học tập và chọn trường phù hợp:\n- Đại học Bách Khoa Hà Nội (HUST): Trường đại học kỹ thuật hàng đầu Việt Nam, thế mạnh về CNTT, Kỹ thuật và Tự động hóa.\n- Đại học Kinh tế Quốc dân (NEU): Trường trọng điểm về Kinh tế, Tài chính, Quản trị kinh doanh và Marketing.\n- Đại học Quốc gia Hà Nội (VNU): Trung tâm đào tạo đa ngành chất lượng cao.\n\nBạn có thể hỏi thêm thông tin chi tiết về từng ngành học hoặc cách tính điểm chuẩn nhé.`,
+      actions: [
+        { label: 'Tra cứu ĐH Bách Khoa', query: 'Thông tin trường Đại học Bách Khoa Hà Nội', type: 'primary' },
+        { label: 'Tra cứu ĐH Kinh tế Quốc dân', query: 'Thông tin trường Đại học Kinh tế Quốc dân', type: 'secondary' }
+      ]
+    },
+    {
+      id: 'test_mental',
+      keywords: ['test', 'bai test', 'trac nghiem', 'dass', 'kiem tra tam ly', 'danh gia'],
+      title: 'Trắc nghiệm Tâm lý DASS-21',
+      response: `TRẮC NGHIỆM ĐÁNH GIÁ SỨC KHỎE TÂM LÝ DASS-21:\n\nSafe School tích hợp bài test chuẩn DASS-21 gồm 21 câu hỏi giúp bạn đánh giá 3 chỉ số:\n- Mức độ Căng thẳng (Stress)\n- Mức độ Lo âu (Anxiety)\n- Mức độ Trầm cảm (Depression)\n\nSau khi hoàn thành, hệ thống đưa ra đánh giá cụ thể kèm các giải pháp cải thiện tâm trạng.`,
+      actions: [
+        { label: 'Bắt đầu làm bài test DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' }
+      ]
+    },
+    {
+      id: 'greeting',
+      keywords: ['chao', 'xin chao', 'hello', 'hi', 'ban la ai', 'helo', 'alo', 'hey'],
+      title: 'Xin chào',
+      response: `Xin chào bạn! Mình là SafeBot - Trợ lý ảo AI An toàn Học đường Safe School.\n\nMình có thể hỗ trợ bạn:\n- Hướng dẫn phòng chống bạo lực và bắt nạt học đường\n- Hỗ trợ gửi Báo cáo SOS khẩn cấp hoặc Báo cáo ẩn danh\n- Tư vấn giải tỏa áp lực học tập và bài test DASS-21\n- Tra cứu thông tin trường học và định hướng tương lai\n\nBạn cần hỗ trợ điều gì, hãy nhắn cho mình nhé!`,
+      actions: [
+        { label: 'Tôi bị bắt nạt phải làm sao?', query: 'Tôi bị bắt nạt phải làm sao?', type: 'danger' },
+        { label: 'Làm trắc nghiệm DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' }
+      ]
+    },
+    {
+      id: 'thanks',
+      keywords: ['cam on', 'thanks', 'thank you', 'tuyet voi', 'tam biet', 'bye'],
+      title: 'Cảm ơn bạn',
+      response: `Không có gì bạn nhé! Hãy luôn nhớ rằng nhà trường và Safe School luôn đồng hành và bảo vệ bạn. Chúc bạn có những ngày học tập thật an toàn và nhiều niềm vui!`,
+      actions: []
+    }
+  ];
+
+  const findLocalFallbackAnswer = (userInput) => {
+    const cleanNoAccent = removeAccents(userInput);
+    let bestMatch = null;
+    let highestScore = 0;
+
+    for (const item of LOCAL_KNOWLEDGE_BASE) {
+      let score = 0;
+      for (const kw of item.keywords) {
+        if (cleanNoAccent.includes(kw)) {
+          score += 2;
+        }
+      }
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = item;
+      }
+    }
+
+    if (bestMatch && highestScore > 0) {
+      return bestMatch;
+    }
+
+    return {
+      title: 'SafeBot AI',
+      response: `Xin chào bạn. Hiện tại hệ thống đang kết nối đường truyền bảo mật an toàn. SafeBot luôn sẵn sàng hỗ trợ bạn bảo vệ an toàn và giải tỏa căng thẳng học đường.\n\nNếu bạn đang gặp sự cố hoặc cần hỗ trợ khẩn cấp, vui lòng chọn một trong các kênh hỗ trợ bên dưới:`,
+      actions: [
+        { label: 'Gửi báo cáo SOS khẩn cấp', url: `${basePath.pages}report-sos.html`, type: 'danger' },
+        { label: 'Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' },
+        { label: 'Làm trắc nghiệm DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' },
+        { label: 'Chat với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' }
+      ]
+    };
+  };
+
+  // ============================================================================
+  // GỌI GOOGLE GEMINI AI ĐỜI MỚI NHẤT VỚI CƠ CHẾ DỰ PHÒNG & RETRY
   // ============================================================================
   const callGeminiAI = async (userInput, chatHistory) => {
     const apiKey = GEMINI_CONFIG.apiKey;
@@ -146,15 +300,27 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
 
     contents.push({ role: 'user', parts: [{ text: userInput }] });
 
-    const modelsToTry = [GEMINI_CONFIG.primaryModel, GEMINI_CONFIG.fallbackModel, 'gemini-3.5-flash'];
+    const modelsToTry = (GEMINI_CONFIG.models && GEMINI_CONFIG.models.length > 0)
+      ? GEMINI_CONFIG.models
+      : [
+          GEMINI_CONFIG.primaryModel || 'gemini-flash-lite-latest',
+          GEMINI_CONFIG.fallbackModel || 'gemini-3.5-flash-lite',
+          'gemini-3.1-flash-lite',
+          'gemini-3-flash-preview'
+        ];
+
     let lastError = null;
 
     for (const model of modelsToTry) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 giây timeout mỗi model
+
       try {
         const endpoint = `${GEMINI_CONFIG.baseUrl}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents: contents,
@@ -167,21 +333,27 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
           })
         });
 
+        clearTimeout(timeoutId);
+
         if (response.ok) {
           const data = await response.json();
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (text) {
-            // Lọc sạch mọi emoji còn sót lại
+            // Lọc sạch mọi emoji còn sót lại nếu có
             const cleanText = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
             
             const actions = [];
-            const cleanLower = removeAccents(userInput);
-            if (cleanLower.includes('sos') || cleanLower.includes('bat nat') || cleanLower.includes('nguy hiem')) {
+            const cleanLower = removeAccents(userInput + ' ' + cleanText);
+            
+            if (cleanLower.includes('sos') || cleanLower.includes('bat nat') || cleanLower.includes('nguy hiem') || cleanLower.includes('de doa') || cleanLower.includes('danh nhau')) {
               actions.push({ label: 'Gửi báo cáo SOS khẩn cấp', url: `${basePath.pages}report-sos.html`, type: 'danger' });
               actions.push({ label: 'Gọi Tổng đài 111 (Miễn phí)', url: 'tel:111', type: 'secondary' });
-            } else if (cleanLower.includes('stress') || cleanLower.includes('tam ly') || cleanLower.includes('tram cam')) {
+              actions.push({ label: 'Gửi báo cáo chi tiết', url: `${basePath.pages}report.html`, type: 'primary' });
+            } else if (cleanLower.includes('stress') || cleanLower.includes('tam ly') || cleanLower.includes('tram cam') || cleanLower.includes('lo au') || cleanLower.includes('met moi') || cleanLower.includes('ap luc')) {
               actions.push({ label: 'Làm trắc nghiệm tâm lý DASS-21', url: `${basePath.pages}tests.html`, type: 'primary' });
               actions.push({ label: 'Chat với Tham vấn viên', url: `${basePath.pages}chat.html`, type: 'secondary' });
+            } else if (cleanLower.includes('truong') || cleanLower.includes('dai hoc') || cleanLower.includes('thpt') || cleanLower.includes('tuyen sinh') || cleanLower.includes('nganh hoc')) {
+              actions.push({ label: 'Tra cứu trường học', query: 'Tra cứu thông tin các trường học', type: 'primary' });
             }
 
             return {
@@ -193,9 +365,12 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
         } else {
           const errData = await response.json().catch(() => ({}));
           lastError = errData.error?.message || `HTTP ${response.status}`;
+          console.warn(`[SafeBot] Model ${model} failed: ${lastError}`);
         }
       } catch (err) {
-        lastError = err.message;
+        clearTimeout(timeoutId);
+        lastError = err.name === 'AbortError' ? 'Thời gian chờ vượt quá giới hạn (Timeout)' : err.message;
+        console.warn(`[SafeBot] Model ${model} error: ${lastError}`);
       }
     }
 
@@ -367,20 +542,22 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
     const cleanNoAccent = removeAccents(userInput);
     const displayName = currentUserProfile.fullName || 'bạn';
 
-    // 1. Kiểm tra yêu cầu thống kê Dashboard (chỉ xử lý riêng cho Admin qua Firestore)
-    const dashboardKeywords = [
-      'thong ke', 'dashboard', 'so lieu', 'bao cao he thong', 'tong so nguoi dung',
-      'so luong nguoi dung', 'bao nhieu bao cao', 'tinh hinh bao cao', 'so ca sos',
-      'thong ke nguoi dung', 'thong ke user', 'so hoc sinh', 'so giao vien'
+    // 1. Kiểm tra yêu cầu thống kê Dashboard hệ thống (chỉ xử lý riêng cho Admin qua Firestore)
+    const systemDashboardKeywords = [
+      'thong ke dashboard', 'dashboard he thong', 'bao cao he thong', 'tong so nguoi dung',
+      'so luong nguoi dung', 'bao nhieu bao cao he thong', 'tinh hinh bao cao he thong',
+      'so ca sos he thong', 'thong ke nguoi dung he thong', 'thong ke user he thong',
+      'so hoc sinh he thong', 'so giao vien he thong', 'thong ke so lieu he thong'
     ];
 
-    const isDashboardQuery = dashboardKeywords.some(kw => cleanNoAccent.includes(kw));
+    const isDashboardQuery = systemDashboardKeywords.some(kw => cleanNoAccent.includes(kw)) ||
+      (cleanNoAccent.includes('dashboard') && (cleanNoAccent.includes('thong ke') || cleanNoAccent.includes('so lieu')));
 
     if (isDashboardQuery) {
       if (currentUserProfile.role !== 'admin') {
         return {
           title: 'Truy cập giới hạn',
-          response: `Tính năng thống kê số liệu Dashboard và dữ liệu tổng quan sự vụ chỉ được cung cấp cho tài khoản Quản trị viên (Admin) để đảm bảo an toàn và bảo mật thông tin học đường.\n\n- Nếu bạn là Quản trị viên, vui lòng đăng nhập tài khoản Admin để tra cứu.\n- Nếu bạn là Học sinh, bạn có thể tra cứu thông tin trường học, gửi báo cáo bảo mật hoặc làm trắc nghiệm tâm lý.`,
+          response: `Tính năng thống kê số liệu Dashboard hệ thống chỉ được cung cấp cho tài khoản Quản trị viên (Admin) để đảm bảo an toàn và bảo mật thông tin học đường.\n\n- Nếu bạn là Quản trị viên, vui lòng đăng nhập tài khoản Admin để tra cứu.\n- Nếu bạn là Học sinh, bạn có thể tra cứu thông tin trường học, gửi báo cáo bảo mật hoặc làm trắc nghiệm tâm lý.`,
           actions: [
             { label: 'Đăng nhập Quản trị viên', url: `${basePath.auth}sign-in.html`, type: 'primary' },
             { label: 'Tra cứu thông tin trường học', query: 'Tra cứu thông tin các trường học', type: 'secondary' }
@@ -427,8 +604,13 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
       };
     }
 
-    // 2. Chuyển toàn bộ câu hỏi trò chuyện tới Gemini AI thế hệ mới
-    return await callGeminiAI(userInput, chatHistory);
+    // 2. Chuyển toàn bộ câu hỏi trò chuyện tới Gemini AI thế hệ mới (kèm fallback thông minh)
+    try {
+      return await callGeminiAI(userInput, chatHistory);
+    } catch (apiErr) {
+      console.warn('[SafeBot] Gemini API gặp sự cố, kích hoạt bộ tri thức Safe School dự phòng:', apiErr);
+      return findLocalFallbackAnswer(userInput);
+    }
   };
 
   // ============================================================================
@@ -689,6 +871,7 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
         const answer = await resolveBotAnswer(text, currentHistory);
         const botTime = getCurrentTime();
         removeTyping();
+        playChime();
         appendBotMessageDOM(answer, botTime);
         appendToChatHistory({
           sender: 'bot',
@@ -698,17 +881,15 @@ QUY TẮC BẮT BUỘC VỀ VĂN PHONG VÀ ĐỊNH DẠNG:
         });
       } catch (err) {
         removeTyping();
-        const errorAnswer = {
-          title: 'SafeBot AI',
-          response: 'Đã xảy ra sự cố khi kết nối đến dịch vụ AI. Bạn vui lòng thử lại sau giây lát nhé.',
-          actions: []
-        };
+        console.error('[SafeBot] Lỗi:', err);
+        const fallbackAnswer = findLocalFallbackAnswer(text);
         const botTime = getCurrentTime();
-        appendBotMessageDOM(errorAnswer, botTime);
+        playChime();
+        appendBotMessageDOM(fallbackAnswer, botTime);
         appendToChatHistory({
           sender: 'bot',
-          response: errorAnswer.response,
-          actions: errorAnswer.actions,
+          response: fallbackAnswer.response,
+          actions: fallbackAnswer.actions,
           time: botTime
         });
       } finally {
